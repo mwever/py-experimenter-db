@@ -1,0 +1,19 @@
+<div class="alert alert-{{ 'success' if kind == 'success' else 'error' }} auto-dismiss-toast shadow-lg mb-2">
+  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    {% if kind == 'success' %}
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+    {% else %}
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+    {% endif %}
+  </svg>
+  <span>{{ message }}</span>
+</div>
+<script>
+  // Move toast into the toast area
+  (function() {
+    var el = document.currentScript.previousElementSibling;
+    var area = document.getElementById('toast-area');
+    if (area && el) area.prepend(el);
+    setTimeout(function() { if (el && el.parentNode) el.remove(); }, 4000);
+  })();
+</script>

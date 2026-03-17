@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block title %}Query Tool – PyExperimenter Dashboard{% endblock %}
+
+{% block extra_head %}
+<!-- CodeMirror 5: core + SQL mode + hint addons -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/theme/dracula.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/show-hint.min.css">
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/sql/sql.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/show-hint.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/hint/sql-hint.min.js"></script>
+<style>
+  #sql-editor-host .CodeMirror {
+    font-family: 'JetBrains Mono','Fira Code','Cascadia Code','Consolas',monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    min-height: 220px;
+    border-radius: 0.5rem;
+  }
+  #sql-editor-host .CodeMirror-focused {
+    outline: 2px solid oklch(var(--p));
+    outline-offset: 0;
+  }
+  /* Hint dropdown dark styling */
+  .CodeMirror-hints {
+    background: #282a36;
+    border: 1px solid #44475a;
+    border-radius: 0.375rem;
+    font-family: 'JetBrains Mono','Fira Code','Consolas',monospace;
+    font-size: 12px;
+    z-index: 9999;
+  }
+  .CodeMirror-hint { color: #f8f8f2; padding: 2px 8px; }
+  .CodeMirror-hint-active { background: #44475a !important; color: #bd93f9; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+
+  <h1 class="text-2xl font-bold mb-4">SQL Query Tool</h1>
+
+  <div class="grid grid-cols-1 xl:grid-cols-4 gap-4">
+
+    <!-- Editor + Results (3 cols) -->
+    <div class="xl:col-span-3 space-y-4">
+
+      <!-- Editor card -->
+      <div class="card bg-base-200 shadow">
+        <div class="card-body p-4">
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <h2 class="card-title text-base">SQL Editor</h2>
+              <p class="text-xs text-base-content/40 mt-0.5">
+                Ctrl+Space for completions · Ctrl+Enter to run
+              </p>
+            </div>
+            <div class="flex gap-2">
+              <!-- Save query dialog -->
+              <div x-data="{saveOpen: false, saveName: ''}">
+                <button class="btn btn-ghost btn-sm" @click="saveOpen = true">Save</button>
+                <div x-show="saveOpen" class="fixed inset-0 bg-black/50 z-40 flex items-center justify-center"
+                     @click.self="saveOpen = false">
+                  <div class="bg-base-100 rounded-box p-6 shadow-xl w-80 z-50">
+                    <h3 class="font-bold mb-3">Save Query</h3>
+                    <input type="text" placeholder="Query name" x-model="saveName"
+                           class="input input-bordered input-sm w-full mb-3">
+                    <div class="flex gap-2 justify-end">
+                      <button class="btn btn-ghost btn-sm" @click="saveOpen = false">Cancel</button>
+                      <button class="btn btn-primary btn-sm"
+                              @click="saveName && $dispatch('save-query', {name: saveName}); saveOpen = false">
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Execute button -->
+              <button class="btn btn-primary btn-sm" id="run-btn">
+                <span class="htmx-indicator loading loading-spinner loading-xs"></span>
+                ▶ Run
+              </button>
+            </div>
+          </div>
+
+          <!-- CodeMirror host -->
+          <div id="sql-editor-host"></div>
+
+          <!-- Save query form (hidden, triggered via Alpine event) -->
+          <form id="save-form"
+                hx-post="/query/save"
+                hx-target="#saved-queries-list"
+                hx-swap="outerHTML"
+                @save-query.window="
+                  document.getElementById('save-name').value = $event.detail.name;
+                  document.getElementById('save-sql').value = window._sqlCm ? window._sqlCm.getValue() : '';
+                  htmx.trigger('#save-form', 'submit');
+                ">
+            <input type="hidden" id="save-name" name="name">
+            <input type="hidden" id="save-sql" name="sql">
+          </form>
+
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div id="query-results">
+        <!-- Filled by HTMX -->
+      </div>
+
+    </div>
+
+    <!-- Sidebar: Schema + History + Saved (1 col) -->
+    <div class="xl:col-span-1 space-y-4">
+
+      <!-- Database schema browser -->
+      <div class="card bg-base-200 shadow" x-data="{open: true}">
+        <div class="card-body p-4">
+          <button type="button"
+                  class="card-title text-sm mb-2 w-full flex items-center justify-between hover:text-primary"
+                  @click="open = !open">
+            <span>Schema</span>
+            <svg class="w-3.5 h-3.5 text-base-content/40 transition-transform"
+                 :class="open ? 'rotate-180' : ''"
+                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <div x-show="open" class="space-y-1">
+            {% for tbl in db_schema %}
+            <div x-data="{open: false}">
+              <button type="button"
+                      class="w-full flex items-center justify-between py-1.5 px-2 rounded hover:bg-base-300 group"
+                      @click="open = !open">
+                <div class="flex items-center gap-2 min-w-0">
+                  <svg class="w-3.5 h-3.5 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M3 10h18M3 14h18M10 3v18M14 3v18" stroke="currentColor" stroke-width="2"
+                          fill="none" stroke-linecap="round"/>
+                  </svg>
+                  <span class="font-mono text-xs font-semibold truncate text-left"
+                        title="{{ tbl.table_name }}">{{ tbl.table_name }}</span>
+                </div>
+                <div class="flex items-center gap-1 flex-shrink-0">
+                  <span class="text-xs text-base-content/40">{{ tbl.columns | length }}</span>
+                  <svg class="w-3 h-3 text-base-content/40 transition-transform"
+                       :class="open ? 'rotate-180' : ''"
+                       fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                  </svg>
+                </div>
+              </button>
+
+              <div x-show="open" class="px-2 pb-1">
+                <span class="text-xs text-base-content/40 italic">{{ tbl.label }}</span>
+              </div>
+
+              <div x-show="open" class="ml-2 border-l border-base-300 pl-2 pb-2 space-y-0.5">
+                {% for col in tbl.columns %}
+                <div class="flex items-center justify-between gap-1 py-0.5 px-1 rounded
+                            hover:bg-base-300 cursor-pointer group/col"
+                     title="Click to insert column name"
+                     @click="window.insertColumnName({{ col.name | tojson }})">
+                  <div class="flex items-center gap-1.5 min-w-0">
+                    {% if col.key == 'PRI' %}
+                    <span class="text-warning text-xs flex-shrink-0" title="Primary key">🔑</span>
+                    {% elif col.key == 'MUL' %}
+                    <span class="text-info text-xs flex-shrink-0" title="Foreign / index key">🔗</span>
+                    {% else %}
+                    <span class="w-3.5 flex-shrink-0"></span>
+                    {% endif %}
+                    <span class="font-mono text-xs truncate">{{ col.name }}</span>
+                  </div>
+                  <span class="font-mono text-xs text-base-content/40 flex-shrink-0 truncate max-w-20"
+                        title="{{ col.col_type }}">{{ col.col_type }}</span>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Query history -->
+      <div class="card bg-base-200 shadow">
+        <div class="card-body p-4">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="card-title text-sm">History</h2>
+            <button class="btn btn-ghost btn-xs"
+                    hx-get="/query/history"
+                    hx-target="#query-history-list"
+                    hx-swap="outerHTML">↺</button>
+          </div>
+          {% include "partials/query_history.html" %}
+        </div>
+      </div>
+
+      <!-- Saved queries -->
+      <div class="card bg-base-200 shadow">
+        <div class="card-body p-4">
+          <h2 class="card-title text-sm mb-2">Saved Queries</h2>
+          {% include "partials/saved_queries.html" %}
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  var hintTables = {{ hints_tables | tojson | safe }};
+
+  var cm = CodeMirror(document.getElementById('sql-editor-host'), {
+    value: {{ initial_sql | tojson | safe }},
+    mode: 'text/x-sql',
+    theme: 'dracula',
+    lineNumbers: true,
+    lineWrapping: false,
+    indentWithTabs: false,
+    indentUnit: 2,
+    tabSize: 2,
+    viewportMargin: Infinity,   // auto-grows with content
+    hintOptions: {tables: hintTables, completeSingle: false},
+    extraKeys: {
+      'Tab':        function(cm) { cm.replaceSelection('  '); },
+      'Ctrl-Space': function(cm) {
+        CodeMirror.showHint(cm, CodeMirror.hint.sql, {tables: hintTables, completeSingle: false});
+      },
+      'Ctrl-Enter': function() { window._queryEditorSubmit(); },
+      'Cmd-Enter':  function() { window._queryEditorSubmit(); },
+    },
+  });
+
+  // Auto-trigger completions while typing identifiers or after a dot/backtick
+  cm.on('inputRead', function(editor, change) {
+    if (!editor.state.completionActive && change.text[0] && /[\w`.]/.test(change.text[0])) {
+      CodeMirror.showHint(editor, CodeMirror.hint.sql, {
+        tables: hintTables,
+        completeSingle: false,
+      });
+    }
+  });
+
+  window._sqlCm = cm;
+
+  window._queryEditorSubmit = function () {
+    var sql = cm.getValue().trim();
+    if (!sql) return;
+    htmx.ajax('POST', '/query/execute', {
+      target: '#query-results',
+      swap: 'outerHTML',
+      values: {sql: sql},
+    });
+  };
+
+  // Called from saved/history partials to load a query into the editor
+  window.loadQueryIntoEditor = function (sql) {
+    cm.setValue(sql);
+    cm.focus();
+  };
+
+  // Called from schema browser column clicks
+  window.insertColumnName = function (colName) {
+    var insert = '`' + colName + '`';
+    var cursor = cm.getCursor();
+    cm.replaceRange(insert, cursor);
+    cm.focus();
+  };
+
+  document.getElementById('run-btn').addEventListener('click', function () {
+    window._queryEditorSubmit();
+  });
+
+  // Refresh history automatically after every query execution
+  document.body.addEventListener('htmx:afterSwap', function (e) {
+    if (e.detail.target.id === 'query-results') {
+      htmx.ajax('GET', '/query/history', {
+        target: '#query-history-list',
+        swap: 'outerHTML',
+      });
+    }
+  });
+}());
+</script>
+{% endblock %}

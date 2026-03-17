@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration – PyExperimenter Dashboard{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+
+  <h1 class="text-2xl font-bold mb-6">Configuration</h1>
+
+  <form hx-post="/config"
+        hx-target="#toast-area"
+        hx-swap="afterbegin">
+
+    <!-- ── Monitor ─────────────────────────────────────────────────── -->
+    <div class="card bg-base-200 shadow mb-4">
+      <div class="card-body p-5">
+        <h2 class="card-title text-base mb-4">Monitor</h2>
+
+        <div class="form-control max-w-xs">
+          <label class="label" for="ui_refresh_interval">
+            <span class="label-text">Live-update interval</span>
+            <span class="label-text-alt text-base-content/50">seconds</span>
+          </label>
+          <input id="ui_refresh_interval"
+                 type="number" name="ui_refresh_interval" min="1" max="300"
+                 value="{{ settings.ui_refresh_interval }}"
+                 class="input input-bordered input-sm w-full">
+          <label class="label">
+            <span class="label-text-alt text-base-content/40">
+              How often the Monitor page polls for updated stats and worker info.
+            </span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Experiments table ────────────────────────────────────────── -->
+    <div class="card bg-base-200 shadow mb-4">
+      <div class="card-body p-5">
+        <h2 class="card-title text-base mb-4">Experiments Table</h2>
+
+        <!-- Default columns -->
+        <div class="form-control mb-4">
+          <label class="label"><span class="label-text">Default visible columns</span></label>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 bg-base-300 rounded-lg p-3">
+            {% for col in all_columns %}
+            <label class="flex items-center gap-2 cursor-pointer py-0.5">
+              <input type="checkbox" name="default_columns" value="{{ col }}"
+                     class="checkbox checkbox-sm"
+                     {% if col in settings.default_columns %}checked{% endif %}>
+              <span class="font-mono text-sm truncate" title="{{ col }}">{{ col }}</span>
+            </label>
+            {% endfor %}
+          </div>
+          <label class="label">
+            <span class="label-text-alt text-base-content/40">
+              Columns shown when opening the Experiments page for the first time
+              (or when no column cookie is set).
+            </span>
+          </label>
+        </div>
+
+        <div class="flex flex-wrap gap-4">
+
+          <!-- Default page size -->
+          <div class="form-control">
+            <label class="label" for="default_page_size">
+              <span class="label-text">Rows per page</span>
+            </label>
+            <select id="default_page_size" name="default_page_size"
+                    class="select select-bordered select-sm">
+              {% for n in [10, 25, 50, 100, 200, 500] %}
+              <option value="{{ n }}" {% if n == settings.default_page_size %}selected{% endif %}>
+                {{ n }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Default sort column -->
+          <div class="form-control">
+            <label class="label" for="default_sort_col">
+              <span class="label-text">Default sort column</span>
+            </label>
+            <select id="default_sort_col" name="default_sort_col"
+                    class="select select-bordered select-sm">
+              {% for col in all_columns %}
+              <option value="{{ col }}" {% if col == settings.default_sort_col %}selected{% endif %}>
+                {{ col }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Default sort direction -->
+          <div class="form-control">
+            <label class="label" for="default_sort_dir">
+              <span class="label-text">Default sort direction</span>
+            </label>
+            <select id="default_sort_dir" name="default_sort_dir"
+                    class="select select-bordered select-sm">
+              <option value="DESC" {% if settings.default_sort_dir == 'DESC' %}selected{% endif %}>
+                Descending
+              </option>
+              <option value="ASC" {% if settings.default_sort_dir == 'ASC' %}selected{% endif %}>
+                Ascending
+              </option>
+            </select>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ── LLM Connector ────────────────────────────────────────────── -->
+    <div class="card bg-base-200 shadow mb-4">
+      <div class="card-body p-5">
+        <h2 class="card-title text-base mb-1">LLM Connector</h2>
+        <p class="text-sm text-base-content/50 mb-4">
+          Used by the Chat page for data analysis and code generation.
+          Any OpenAI-compatible endpoint works (OpenAI, Ollama, LM Studio, vLLM, …).
+        </p>
+
+        <div class="space-y-3">
+
+          <div class="form-control">
+            <label class="label" for="llm_url">
+              <span class="label-text">API base URL</span>
+              <span class="label-text-alt text-base-content/40">required</span>
+            </label>
+            <input id="llm_url" type="url" name="llm_url"
+                   placeholder="https://api.openai.com/v1"
+                   value="{{ settings.llm_url }}"
+                   class="input input-bordered input-sm w-full">
+            <label class="label">
+              <span class="label-text-alt text-base-content/40">
+                Local examples: http://localhost:11434/v1 (Ollama),
+                http://localhost:1234/v1 (LM Studio)
+              </span>
+            </label>
+          </div>
+
+          <div class="form-control max-w-sm">
+            <label class="label" for="llm_model">
+              <span class="label-text">Model name</span>
+            </label>
+            <input id="llm_model" type="text" name="llm_model"
+                   placeholder="gpt-4o"
+                   value="{{ settings.llm_model }}"
+                   class="input input-bordered input-sm w-full">
+            <label class="label">
+              <span class="label-text-alt text-base-content/40">
+                E.g. gpt-4o, llama3.2, qwen2.5-coder
+              </span>
+            </label>
+          </div>
+
+          <div class="form-control max-w-sm" x-data="{show: false}">
+            <label class="label" for="llm_token">
+              <span class="label-text">API token</span>
+              <span class="label-text-alt text-base-content/40">optional for local LLMs</span>
+            </label>
+            <div class="flex gap-2">
+              <input id="llm_token" :type="show ? 'text' : 'password'" name="llm_token"
+                     placeholder="sk-…"
+                     value="{{ settings.llm_token }}"
+                     class="input input-bordered input-sm flex-1">
+              <button type="button" class="btn btn-ghost btn-sm" @click="show = !show">
+                <svg x-show="!show" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+                <svg x-show="show" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Save ─────────────────────────────────────────────────────── -->
+    <div class="flex justify-end">
+      <button type="submit" class="btn btn-primary">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M5 13l4 4L19 7"/>
+        </svg>
+        Save settings
+      </button>
+    </div>
+
+  </form>
+
+</div>
+{% endblock %}

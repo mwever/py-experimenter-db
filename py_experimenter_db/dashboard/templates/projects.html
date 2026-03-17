@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Projects – PyExperimenter Dashboard{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">Projects</h1>
+    <p class="text-xs text-base-content/40">
+      All past dashboard runs are registered here automatically.
+    </p>
+  </div>
+
+  {% if not projects %}
+  <div class="card bg-base-200 shadow">
+    <div class="card-body py-12 text-center text-base-content/40">
+      <p>No projects registered yet.</p>
+    </div>
+  </div>
+  {% else %}
+  <div class="space-y-3">
+    {% for p in projects %}
+    <div class="card bg-base-200 shadow" id="project-card-{{ p.id }}">
+      <div class="card-body p-4">
+        <div class="flex items-start justify-between gap-4">
+
+          <!-- Left: project info -->
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <h2 class="font-bold text-base truncate">{{ p.name }}</h2>
+              {% if p.path == current_path %}
+              <span class="badge badge-primary badge-sm">current</span>
+              {% endif %}
+            </div>
+            <div class="text-xs text-base-content/50 font-mono truncate mb-2"
+                 title="{{ p.path }}">{{ p.path }}</div>
+            <div class="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-base-content/40">
+              <span><span class="text-base-content/25">host</span>
+                    {{ p.db_host }}:{{ p.db_port }}</span>
+              <span><span class="text-base-content/25">db</span>
+                    {{ p.db_database }}</span>
+              <span><span class="text-base-content/25">table</span>
+                    {{ p.db_table }}</span>
+              <span><span class="text-base-content/25">last seen</span>
+                    {{ p.last_seen[:16] if p.last_seen else '—' }}</span>
+            </div>
+          </div>
+
+          <!-- Right: switch button -->
+          <div class="flex-shrink-0">
+            {% if p.path == current_path %}
+            <span class="btn btn-sm btn-disabled">Active</span>
+            {% else %}
+            <button class="btn btn-primary btn-sm"
+                    id="switch-btn-{{ p.id }}"
+                    onclick="switchProject({{ p.id }})">
+              Switch
+            </button>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Switch feedback -->
+        <div id="switch-msg-{{ p.id }}" class="hidden mt-2"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function switchProject(id) {
+  const btn  = document.getElementById('switch-btn-' + id);
+  const msg  = document.getElementById('switch-msg-' + id);
+  btn.disabled = true;
+  btn.textContent = 'Switching…';
+  msg.className = 'mt-2';
+  msg.textContent = '';
+
+  try {
+    const r = await fetch('/projects/switch/' + id, {method: 'POST'});
+    const d = await r.json();
+    if (d.ok) {
+      msg.className = 'mt-2 text-xs text-success';
+      msg.textContent = '✓ Switched to "' + d.name + '" (table: ' + d.table + '). Reloading…';
+      setTimeout(() => window.location.href = '/', 800);
+    } else {
+      msg.className = 'mt-2 text-xs text-error';
+      msg.textContent = '✗ ' + (d.error || 'Switch failed');
+      btn.disabled = false;
+      btn.textContent = 'Switch';
+    }
+  } catch(e) {
+    msg.className = 'mt-2 text-xs text-error';
+    msg.textContent = '✗ ' + e;
+    btn.disabled = false;
+    btn.textContent = 'Switch';
+  }
+}
+</script>
+{% endblock %}

@@ -4,6 +4,25 @@ install: ## Install the virtual environment and install the pre-commit hooks
 	@uv sync
 	@uv run pre-commit install
 
+.PHONY: dev
+dev: ## Run the dashboard in dev mode with auto-reload (uses example/ config)
+	@echo "🚀 Starting PyExperimenter Dashboard (dev mode, http://127.0.0.1:8080)"
+	@uv run py-experimenter-dashboard \
+		--config example/config.yml \
+		--db-config example/db_config.yml \
+		--host 127.0.0.1 \
+		--port 8080 \
+		--reload
+
+.PHONY: run
+run: ## Run the dashboard (pass CONFIG=, DB_CONFIG=, HOST=, PORT= to override defaults)
+	@echo "🚀 Starting PyExperimenter Dashboard"
+	@uv run py-experimenter-dashboard \
+		--config $(or $(CONFIG),example/config.yml) \
+		--db-config $(or $(DB_CONFIG),example/db_config.yml) \
+		--host $(or $(HOST),0.0.0.0) \
+		--port $(or $(PORT),8080)
+
 .PHONY: check
 check: ## Run code quality tools.
 	@echo "🚀 Checking lock file consistency with 'pyproject.toml'"

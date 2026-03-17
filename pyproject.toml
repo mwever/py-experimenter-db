@@ -6,6 +6,20 @@ authors = [{ name = "Marcel Wever", email = "m.wever@ai.uni-hannover.de" }]
 readme = "README.md"
 keywords = ['python']
 requires-python = ">=3.10,<4.0"
+dependencies = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.29",
+    "aiomysql>=0.2",
+    "aiosqlite>=0.20",
+    "jinja2>=3.1",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+    "python-multipart>=0.0.9",
+    # Chat / code-execution feature
+    "httpx>=0.27",
+    "pandas>=2.0",
+    "matplotlib>=3.8",
+]
 classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python",
@@ -17,6 +31,9 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+
+[project.scripts]
+py-experimenter-dashboard = "py_experimenter_db.cli:main"
 
 [project.urls]
 Homepage = "https://mwever.github.io/py-experimenter-dashboard/"
@@ -43,6 +60,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["py_experimenter_db"]
+include = ["py_experimenter_db/dashboard/templates/**"]
 
 [tool.mypy]
 files = ["py_experimenter_db"]

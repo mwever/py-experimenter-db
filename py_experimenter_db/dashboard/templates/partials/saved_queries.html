@@ -1,0 +1,19 @@
+<div id="saved-queries-list" class="space-y-1">
+  {% for sq in saved %}
+  <div class="flex items-center gap-2 p-2 rounded hover:bg-base-300 group">
+    <div class="flex-1 min-w-0 cursor-pointer"
+         x-data
+         @click="window.loadQueryIntoEditor({{ sq.sql_text | tojson }})">
+      <div class="text-sm font-semibold truncate">{{ sq.name }}</div>
+      <div class="font-mono text-xs text-base-content/40 truncate">{{ sq.sql_text }}</div>
+    </div>
+    <button class="btn btn-ghost btn-xs text-error opacity-0 group-hover:opacity-100"
+            hx-delete="/query/saved/{{ sq.id }}"
+            hx-target="#saved-queries-list"
+            hx-swap="outerHTML"
+            hx-confirm="Delete saved query '{{ sq.name }}'?">✕</button>
+  </div>
+  {% else %}
+  <div class="text-center py-4 text-base-content/40 text-sm">No saved queries</div>
+  {% endfor %}
+</div>

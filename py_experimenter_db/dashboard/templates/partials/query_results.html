@@ -1,0 +1,48 @@
+<div id="query-results">
+  {% if result.error %}
+  <div class="alert alert-error mt-4">
+    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 9v2m0 4h.01M12 5a7 7 0 110 14 7 7 0 010-14z"/>
+    </svg>
+    <pre class="text-sm font-mono whitespace-pre-wrap">{{ result.error }}</pre>
+  </div>
+  {% else %}
+  <div class="mt-4">
+    <div class="flex items-center justify-between mb-2 text-sm text-base-content/50">
+      <span>
+        {{ result.row_count | fmt_number }} row(s) returned
+        {% if result.truncated %}<span class="badge badge-warning badge-sm ml-2">Truncated to 2000</span>{% endif %}
+      </span>
+      <span>{{ duration_ms }}ms</span>
+    </div>
+
+    {% if result.rows %}
+    <div class="overflow-x-auto rounded-box shadow max-h-[60vh] overflow-y-auto">
+      <table class="table table-sm table-zebra w-full">
+        <thead class="sticky top-0 bg-base-200">
+          <tr>
+            {% for col in result.columns %}
+            <th class="whitespace-nowrap">{{ col }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in result.rows %}
+          <tr>
+            {% for cell in row %}
+            <td class="max-w-xs truncate font-mono text-xs" title="{{ cell }}">
+              {{ cell if cell is not none else "NULL" }}
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-8 text-base-content/40">Query returned no rows</div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>

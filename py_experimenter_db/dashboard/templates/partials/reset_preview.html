@@ -1,0 +1,116 @@
+{% if not candidates %}
+<div class="text-base-content/40 text-sm text-center py-12">
+  No experiments match the selected filters.
+</div>
+{% else %}
+<form hx-post="/reset/execute"
+      hx-target="#toast-area"
+      hx-swap="afterbegin"
+      x-data="{
+        allChecked: true,
+        ids: {{ candidates | map(attribute='id') | list | tojson | safe }},
+        selected: {{ candidates | map(attribute='id') | list | tojson | safe }},
+        toggleAll() {
+          this.allChecked = !this.allChecked;
+          this.selected = this.allChecked ? [...this.ids] : [];
+        },
+        isSelected(id) { return this.selected.includes(id); },
+        toggle(id) {
+          if (this.isSelected(id)) {
+            this.selected = this.selected.filter(i => i !== id);
+          } else {
+            this.selected.push(id);
+          }
+          this.allChecked = this.selected.length === this.ids.length;
+        }
+      }">
+
+  <!-- Hidden inputs for selected IDs (Alpine-driven) -->
+  <template x-for="id in selected" :key="id">
+    <input type="hidden" name="ids" :value="id">
+  </template>
+
+  <!-- Summary bar -->
+  <div class="flex items-center justify-between mb-3">
+    <div class="text-sm">
+      <span class="font-semibold" x-text="selected.length"></span>
+      <span class="text-base-content/50"> / {{ candidates | length }} selected</span>
+    </div>
+    <button type="button" class="btn btn-ghost btn-xs" @click="toggleAll()">
+      <span x-text="allChecked ? 'Deselect all' : 'Select all'">Deselect all</span>
+    </button>
+  </div>
+
+  <!-- Experiment table -->
+  <div class="card bg-base-200 shadow mb-4 overflow-x-auto">
+    <table class="table table-sm table-zebra w-full">
+      <thead>
+        <tr>
+          <th class="w-8"></th>
+          <th>ID</th>
+          <th>Status</th>
+          {% for kf in keyfields %}
+          <th class="font-mono">{{ kf }}</th>
+          {% endfor %}
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in candidates %}
+        <tr class="cursor-pointer" @click="toggle({{ c.id }})">
+          <td @click.stop>
+            <input type="checkbox" class="checkbox checkbox-sm checkbox-primary"
+                   :checked="isSelected({{ c.id }})"
+                   @change="toggle({{ c.id }})">
+          </td>
+          <td class="font-mono text-xs">{{ c.id }}</td>
+          <td>
+            <span class="badge badge-{{ c.status }} badge-sm">{{ c.status }}</span>
+          </td>
+          {% for kf in keyfields %}
+          <td class="font-mono text-xs max-w-32 truncate"
+              title="{{ c.keyfield_values.get(kf, '') }}">
+            {{ c.keyfield_values.get(kf, '') }}
+          </td>
+          {% endfor %}
+          <td class="text-xs text-base-content/50">
+            {{ c.creation_date[:16] if c.creation_date else '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Deletion options -->
+  <div class="card bg-base-200 shadow mb-4">
+    <div class="card-body p-4">
+      <h3 class="card-title text-sm mb-3">Related data</h3>
+      <div class="space-y-2">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" name="delete_logtable" value="1"
+                 class="checkbox checkbox-sm checkbox-warning">
+          <span class="text-sm">Delete logtable entries for selected experiments</span>
+        </label>
+        {% if has_codecarbon %}
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" name="delete_codecarbon" value="1"
+                 class="checkbox checkbox-sm checkbox-warning">
+          <span class="text-sm">Delete CodeCarbon entries for selected experiments</span>
+        </label>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Execute -->
+  <button type="submit"
+          class="btn btn-warning w-full"
+          :disabled="selected.length === 0"
+          hx-confirm="Reset the selected experiments? This will set them back to 'created' and clear their results.">
+    <span class="htmx-indicator loading loading-spinner loading-xs mr-1"></span>
+    ↺ Reset <span x-text="selected.length"></span> experiment(s)
+  </button>
+
+</form>
+{% endif %}

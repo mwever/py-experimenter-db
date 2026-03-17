@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}PyExperimenter Dashboard{% endblock %}</title>
+
+  <!-- Tailwind CSS + DaisyUI -->
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- HTMX -->
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.12/dist/htmx.min.js"></script>
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+
+  {% block extra_head %}{% endblock %}
+
+  <style>
+    /* ════════════════════════════════════════════════════════════════════
+       PyExperimenter brand palette (from logo)
+         Cobalt blue : #1E88E5  ≈  oklch(0.58  0.19  258)
+         Amber gold  : #C8991A  ≈  oklch(0.70  0.14   80)
+       ════════════════════════════════════════════════════════════════════ */
+
+    /* ── DaisyUI token overrides ──────────────────────────────────────── */
+    [data-theme="dark"] {
+      --p:  0.58 0.19 258;   /* primary   – cobalt blue          */
+      --pf: 0.50 0.19 258;   /* primary focus                    */
+      --pc: 1    0    0;     /* primary content – white          */
+      --s:  0.45 0.14 258;   /* secondary – muted blue           */
+      --sf: 0.38 0.14 258;
+      --sc: 1    0    0;
+      --a:  0.70 0.14 80;    /* accent    – amber gold           */
+      --af: 0.62 0.14 80;
+      --ac: 0.15 0.04 80;    /* dark text on gold                */
+
+      /* Base surfaces – all dark blue-tinted                    */
+      --b1: 0.20 0.028 255;  /* base-100: modals, dropdowns      */
+      --b2: 0.17 0.025 255;  /* base-200: cards                  */
+      --b3: 0.13 0.022 252;  /* base-300: page body              */
+      --bc: 0.88 0.03  258;  /* base-content: body text          */
+    }
+
+    /* ── CSS shorthand aliases ────────────────────────────────────────── */
+    :root {
+      --brand-blue: oklch(0.58 0.19 258);
+      --brand-gold: oklch(0.70 0.14  80);
+      --brand-blue-dim: oklch(0.58 0.19 258 / 0.18);
+      --brand-gold-dim: oklch(0.70 0.14  80 / 0.18);
+    }
+
+    /* ── Layout ───────────────────────────────────────────────────────── */
+    .sidebar-layout { min-height: 100vh; }
+    .main-content   { min-height: 100vh; overflow-y: auto; }
+
+    /* ── Sidebar ──────────────────────────────────────────────────────── */
+    .sidebar-wrap {
+      background: linear-gradient(175deg, oklch(0.19 0.03 258), oklch(0.15 0.02 245));
+      border-right: 1px solid oklch(0.58 0.19 258 / 0.20);
+    }
+    .sidebar-brand {
+      background: oklch(0.58 0.19 258 / 0.10);
+      border-bottom: 1px solid oklch(0.58 0.19 258 / 0.22);
+    }
+    .sidebar-footer {
+      border-top: 1px solid oklch(0.58 0.19 258 / 0.15);
+      color: oklch(0.55 0.05 258 / 0.6);
+    }
+
+    /* Active nav item */
+    .nav-active {
+      background: oklch(0.58 0.19 258 / 0.18) !important;
+      border-left: 3px solid var(--brand-blue);
+      padding-left: calc(0.5rem - 3px) !important;
+      color: oklch(0.88 0.10 258) !important;
+    }
+
+    /* ── Cards ────────────────────────────────────────────────────────── */
+    /* Subtle top accent stripe on every card */
+    .card {
+      border-top: 2px solid oklch(0.58 0.19 258 / 0.22) !important;
+    }
+    .card-title {
+      color: oklch(0.90 0.06 258);
+    }
+
+    /* ── Tables ───────────────────────────────────────────────────────── */
+    .table thead th, .table thead td {
+      background: oklch(0.58 0.19 258 / 0.14) !important;
+      color: oklch(0.88 0.10 258);
+      border-bottom: 1px solid oklch(0.58 0.19 258 / 0.30);
+      font-weight: 600;
+    }
+    .table tbody tr:hover td,
+    .table tbody tr:hover th {
+      background: oklch(0.58 0.19 258 / 0.07) !important;
+    }
+
+    /* ── Inputs ───────────────────────────────────────────────────────── */
+    .input:focus, .textarea:focus, .select:focus {
+      border-color: var(--brand-blue) !important;
+      outline: 2px solid oklch(0.58 0.19 258 / 0.35) !important;
+      outline-offset: 0;
+    }
+
+    /* ── Page headings ────────────────────────────────────────────────── */
+    h1.text-2xl, h1.text-3xl {
+      color: oklch(0.95 0.04 258);
+    }
+
+    /* ── Dividers ─────────────────────────────────────────────────────── */
+    .divider { color: oklch(0.58 0.19 258 / 0.40); }
+    .divider::before, .divider::after {
+      background: oklch(0.58 0.19 258 / 0.18) !important;
+    }
+
+    /* ── Stat component: value in gold ────────────────────────────────── */
+    .stat-value {
+      color: oklch(0.88 0.10 258);
+    }
+
+    /* ── Scrollbar ────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar       { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: oklch(0.15 0.01 258); }
+    ::-webkit-scrollbar-thumb {
+      background: oklch(0.40 0.10 258);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover { background: var(--brand-blue); }
+
+    /* ── HTMX / Status badges ─────────────────────────────────────────── */
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator { display: inline-flex; }
+    .badge-created { @apply badge badge-ghost; }
+    .badge-running { @apply badge badge-info;    }
+    .badge-done    { @apply badge badge-success; }
+    .badge-error   { @apply badge badge-error;   }
+
+    /* ── CodeMirror focus ring ────────────────────────────────────────── */
+    .cm-editor.cm-focused { outline: 2px solid var(--brand-blue); }
+
+    /* ── Progress bars ────────────────────────────────────────────────── */
+    .progress::-webkit-progress-value { background: var(--brand-blue); }
+    .progress::-moz-progress-bar      { background: var(--brand-blue); }
+
+    /* ── Alert/info accents ───────────────────────────────────────────── */
+    .alert-info {
+      border-color: oklch(0.58 0.19 258 / 0.40) !important;
+    }
+
+    /* ── Gold highlight for key numeric labels ─────────────────────────
+       Add class "text-accent" in templates to show a gold value.        */
+  </style>
+</head>
+<body class="bg-base-300">
+<div class="flex sidebar-layout">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
+  <aside class="sidebar-wrap w-56 min-h-screen flex flex-col shadow-xl flex-shrink-0">
+
+    <!-- Brand header -->
+    <div class="sidebar-brand px-4 pt-5 pb-4 flex flex-col items-center text-center">
+      <img src="/static/logo.png"
+           alt="PyExperimenter logo"
+           style="width:88px;height:88px;object-fit:contain;">
+      <div class="mt-2 text-xs font-extrabold uppercase tracking-widest"
+           style="color: var(--brand-gold);">PyExperimenter</div>
+      <div class="text-xs font-medium text-base-content/60">Dashboard</div>
+      {% if table_name %}
+      <div class="text-xs text-base-content/35 mt-1 truncate w-full" title="{{ table_name }}">
+        <span class="opacity-60">table:</span> {{ table_name }}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Navigation -->
+    <nav class="flex-1 p-3 space-y-0.5 mt-1">
+
+      <a href="/"
+         class="btn btn-ghost btn-sm w-full justify-start gap-2
+                {% if request.url.path == '/' %}nav-active{% endif %}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0
+                   0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5
+                   a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+        </svg>
+        Monitor
+      </a>
+
+      <a href="/experiments"
+         class="btn btn-ghost btn-sm w-full justify-start gap-2
+                {% if request.url.path.startswith('/experiments') %}nav-active{% endif %}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M3 10h18M3 14h18M10 3v18M14 3v18"/>
+        </svg>
+        Experiments
+      </a>
+
+      <a href="/failures"
+         class="btn btn-ghost btn-sm w-full justify-start gap-2
+                {% if request.url.path == '/failures' %}nav-active{% endif %}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732
+                   4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+        Failures
+      </a>
+
+      <a href="/reset"
+         class="btn btn-ghost btn-sm w-full justify-start gap-2
+                {% if request.url.path == '/reset' %}nav-active{% endif %}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0
+                   0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Reset
+      </a>
+
+      <a href="/query"
+         class="btn btn-ghost btn-sm w-full justify-start gap-2
+                {% if request.url.path == '/query' %}nav-active{% endif %}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0
+                   00-2 2v12a2 2 0 002 2z"/>
+        </svg>
+        Query Tool
+      </a>
+
+      <a href="/chat"
+         class="btn btn-ghost btn-sm w-full justify-start gap-2
+                {% if request.url.path == '/chat' %}nav-active{% endif %}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14
+                   a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3v-3z"/>
+        </svg>
+        Chat
+      </a>
+
+      <a href="/projects"
+         class="btn btn-ghost btn-sm w-full justify-start gap-2
+                {% if request.url.path == '/projects' %}nav-active{% endif %}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+        </svg>
+        Projects
+      </a>
+
+      <a href="/config"
+         class="btn btn-ghost btn-sm w-full justify-start gap-2
+                {% if request.url.path == '/config' %}nav-active{% endif %}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573
+                   1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756
+                   .426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826
+                   3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756
+                   -3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37
+                   a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724
+                   1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07
+                   2.572-1.065z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        Config
+      </a>
+
+      {% if has_codecarbon %}
+      <a href="/carbon"
+         class="btn btn-ghost btn-sm w-full justify-start gap-2
+                {% if request.url.path == '/carbon' %}nav-active{% endif %}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5
+                   A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15
+                   20.488V18a2 2 0 012-2h3.064"/>
+        </svg>
+        Carbon
+      </a>
+      {% endif %}
+    </nav>
+
+    <!-- Footer -->
+    <div class="sidebar-footer p-3 text-xs text-center select-none">
+      PyExperimenter Dashboard
+    </div>
+  </aside>
+
+  <!-- ── Main content ──────────────────────────────────────────────────── -->
+  <main class="flex-1 main-content p-6">
+    <div id="toast-area" class="toast toast-top toast-end z-50" aria-live="polite"></div>
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<script>
+  document.addEventListener('htmx:afterSwap', function(evt) {
+    if (window.Alpine) Alpine.initTree(evt.target);
+  });
+  document.addEventListener('htmx:afterSettle', function() {
+    document.querySelectorAll('.auto-dismiss-toast').forEach(function(el) {
+      setTimeout(function() { el.remove(); }, 4000);
+    });
+  });
+</script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

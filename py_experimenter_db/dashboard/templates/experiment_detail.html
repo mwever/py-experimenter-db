@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Experiment #{{ experiment.ID }} – PyExperimenter Dashboard{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+
+  <!-- Header -->
+  <div class="flex items-center gap-4 mb-6">
+    <a href="/experiments" class="btn btn-ghost btn-sm">← Back</a>
+    <h1 class="text-2xl font-bold">Experiment #{{ experiment.ID }}</h1>
+    <span class="badge-{{ experiment.status }} badge badge-lg">{{ experiment.status }}</span>
+  </div>
+
+  <!-- Details grid -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+
+    <!-- Timestamps card -->
+    <div class="card bg-base-200 shadow">
+      <div class="card-body p-4">
+        <h2 class="card-title text-sm mb-3">Timing</h2>
+        <dl class="space-y-1 text-sm">
+          <div class="flex gap-2">
+            <dt class="text-base-content/50 w-32 flex-shrink-0">Created</dt>
+            <dd class="font-mono">{{ experiment.creation_date or "—" }}</dd>
+          </div>
+          <div class="flex gap-2">
+            <dt class="text-base-content/50 w-32 flex-shrink-0">Started</dt>
+            <dd class="font-mono">{{ experiment.start_date or "—" }}</dd>
+          </div>
+          <div class="flex gap-2">
+            <dt class="text-base-content/50 w-32 flex-shrink-0">Ended</dt>
+            <dd class="font-mono">{{ experiment.end_date or "—" }}</dd>
+          </div>
+          <div class="flex gap-2">
+            <dt class="text-base-content/50 w-32 flex-shrink-0">Worker</dt>
+            <dd class="font-mono">{{ experiment.machine or "—" }}</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+
+    <!-- Keyfields card -->
+    <div class="card bg-base-200 shadow">
+      <div class="card-body p-4">
+        <h2 class="card-title text-sm mb-3">Key Parameters</h2>
+        <dl class="space-y-1 text-sm">
+          {% for k, v in keyfield_vals.items() %}
+          <div class="flex gap-2">
+            <dt class="text-base-content/50 w-40 flex-shrink-0 truncate" title="{{ k }}">{{ k }}</dt>
+            <dd class="font-mono font-semibold">{{ v if v is not none else "—" }}</dd>
+          </div>
+          {% else %}
+          <div class="text-base-content/40">No keyfields defined</div>
+          {% endfor %}
+        </dl>
+      </div>
+    </div>
+
+    <!-- Results card -->
+    <div class="card bg-base-200 shadow md:col-span-2">
+      <div class="card-body p-4">
+        <h2 class="card-title text-sm mb-3">Results</h2>
+        {% if resultfield_vals %}
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {% for k, v in resultfield_vals.items() %}
+          <div class="bg-base-300 rounded-lg p-3">
+            <div class="text-xs text-base-content/50 mb-1 truncate" title="{{ k }}">{{ k }}</div>
+            <div class="font-mono font-bold text-sm">
+              {% if v is not none %}
+                {% if v is float or v is integer %}
+                  {{ "%.6g" | format(v) }}
+                {% else %}
+                  {{ v }}
+                {% endif %}
+              {% else %}
+                <span class="text-base-content/30">—</span>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-base-content/40 text-sm">No results recorded</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Exception card (only if error) -->
+    {% if exception_column and experiment[exception_column] %}
+    <div class="card bg-base-200 shadow border border-error/30 md:col-span-2">
+      <div class="card-body p-4">
+        <h2 class="card-title text-sm text-error mb-3">Exception</h2>
+        <pre class="bg-base-300 rounded-lg p-4 text-xs font-mono overflow-x-auto whitespace-pre-wrap text-error/90 max-h-64 overflow-y-auto">{{ experiment[exception_column] }}</pre>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Logtable charts -->
+  {% for lt_name in logtable_data.keys() %}
+  <div class="card bg-base-200 shadow mb-4">
+    <div class="card-body p-4">
+      <h2 class="card-title text-base mb-4">Log Table: {{ lt_name }}</h2>
+
+      {% set rows = logtable_data[lt_name] %}
+      {% set num_cols = logtable_numeric_cols[lt_name] %}
+
+      {% if rows %}
+        {% if num_cols %}
+        <div id="chart-{{ lt_name }}" class="w-full" style="height: 350px;"></div>
+        <script id="data-{{ lt_name }}" type="application/json">{{ rows | tojson }}</script>
+        <script>
+        (function() {
+          var rawData = JSON.parse(document.getElementById('data-{{ lt_name }}').textContent);
+          var numCols = {{ num_cols | tojson }};
+          var traces = numCols.map(function(col) {
+            return {
+              x: rawData.map(function(r, i) { return i; }),
+              y: rawData.map(function(r) { return r[col]; }),
+              type: 'scatter',
+              mode: 'lines+markers',
+              name: col,
+              line: { width: 1.5 },
+              marker: { size: 4 }
+            };
+          });
+          var layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#9ca3af', size: 12 },
+            xaxis: { title: 'Iteration', gridcolor: '#374151', zeroline: false },
+            yaxis: { gridcolor: '#374151', zeroline: false },
+            legend: { orientation: 'h', y: -0.15 },
+            margin: { t: 20, r: 20, b: 60, l: 60 }
+          };
+          Plotly.newPlot('chart-{{ lt_name }}', traces, layout, {responsive: true, displaylogo: false});
+        })();
+        </script>
+        {% else %}
+        <!-- Non-numeric logtable: show as table -->
+        <div class="overflow-x-auto">
+          <table class="table table-xs table-zebra">
+            <thead>
+              <tr>
+                {% for col in rows[0].keys() %}
+                <th>{{ col }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+              <tr>
+                {% for v in row.values() %}
+                <td class="font-mono max-w-xs truncate">{{ v if v is not none else "—" }}</td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+      {% else %}
+      <div class="text-base-content/40 text-sm">No log entries yet</div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  {% if not logtable_data %}
+  <div class="card bg-base-200 shadow p-6 text-center text-base-content/40">
+    No log tables configured
+  </div>
+  {% endif %}
+  {% endfor %}
+
+</div>
+{% endblock %}

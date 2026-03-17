@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Reset Experiments – PyExperimenter Dashboard{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+
+  <h1 class="text-2xl font-bold mb-6">Reset Experiments</h1>
+
+  <div class="grid grid-cols-1 xl:grid-cols-4 gap-6">
+
+    <!-- Filter panel -->
+    <div class="xl:col-span-1">
+      <form id="filter-form"
+            hx-post="/reset/preview"
+            hx-target="#reset-preview"
+            hx-swap="innerHTML"
+            hx-indicator="#filter-spinner">
+
+        <!-- Status filter -->
+        <div class="card bg-base-200 shadow mb-4">
+          <div class="card-body p-4">
+            <h2 class="card-title text-sm mb-3">Status</h2>
+            <div class="space-y-2">
+              {% for s in ["created", "running", "done", "error"] %}
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="status_{{ s }}" value="1"
+                       class="checkbox checkbox-sm checkbox-primary"
+                       {% if s in ["running", "error"] %}checked{% endif %}>
+                <span class="badge badge-{{ s }} badge-sm">{{ s }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Keyfield filters -->
+        {% if keyfields %}
+        <div class="card bg-base-200 shadow mb-4">
+          <div class="card-body p-4">
+            <h2 class="card-title text-sm mb-3">Keyfield Filters</h2>
+            <div class="space-y-3">
+              {% for kf in keyfields %}
+              <div>
+                <label class="text-xs text-base-content/50 font-mono mb-1 block">{{ kf }}</label>
+                <input type="text" name="kf_{{ kf }}" placeholder="e.g. foo  or  1,2,3  or  >=5"
+                       class="input input-bordered input-xs w-full font-mono">
+              </div>
+              {% endfor %}
+            </div>
+            <!-- Syntax help -->
+            <div class="mt-3 pt-3 border-t border-base-300 text-xs text-base-content/40 space-y-0.5">
+              <div><code class="font-mono">foo</code> — exact match</div>
+              <div><code class="font-mono">a, b, c</code> — multiple values</div>
+              <div><code class="font-mono">1-10</code> — numeric range</div>
+              <div><code class="font-mono">&gt;=5</code> <code class="font-mono">&lt;10</code> — comparison</div>
+              <div><code class="font-mono">*foo*</code> — wildcard (LIKE)</div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        <button type="submit" class="btn btn-primary w-full">
+          <span id="filter-spinner" class="htmx-indicator loading loading-spinner loading-xs mr-1"></span>
+          Preview matching
+        </button>
+
+      </form>
+    </div>
+
+    <!-- Preview + execute panel -->
+    <div class="xl:col-span-3">
+      <div id="reset-preview" class="text-base-content/40 text-sm text-center py-12">
+        Set filters and click "Preview matching" to see experiments.
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

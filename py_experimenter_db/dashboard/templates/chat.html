@@ -1,0 +1,935 @@
+{% extends "base.html" %}
+
+{% block title %}Chat – PyExperimenter Dashboard{% endblock %}
+
+{% block extra_head %}
+<!-- CodeMirror 5 -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/theme/dracula.css">
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/python/python.min.js"></script>
+<style>
+  /* plain textarea used in modals (memory) */
+  .code-ta {
+    font-family: 'JetBrains Mono','Fira Code','Cascadia Code','Consolas',monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    background: #282a36;
+    color: #f8f8f2;
+    border: none;
+    outline: none;
+    resize: none;
+    padding: 12px;
+    tab-size: 2;
+    white-space: pre;
+    overflow-wrap: normal;
+    overflow-x: auto;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+  }
+  .code-ta:focus { outline: 2px solid oklch(var(--p)); }
+
+  /* CodeMirror editor fills its flex container */
+  .CodeMirror {
+    height: 100% !important;
+    min-height: 220px;
+    font-family: 'JetBrains Mono','Fira Code','Cascadia Code','Consolas',monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    border-radius: 0.5rem;
+  }
+  .CodeMirror-scroll { min-height: 220px; }
+
+  .msg-body pre {
+    background: #282a36; color: #f8f8f2; border-radius: 0.375rem;
+    padding: 0.75rem; font-size: 11px;
+    font-family: 'JetBrains Mono','Fira Code','Consolas',monospace;
+    overflow-x: auto; white-space: pre-wrap; margin: 0.5rem 0;
+  }
+  .msg-body code {
+    background: oklch(var(--b3)); padding: 0.1em 0.3em;
+    border-radius: 0.25rem; font-size: 0.85em;
+    font-family: 'JetBrains Mono','Fira Code','Consolas',monospace;
+  }
+  .msg-body pre code { background: none; padding: 0; font-size: inherit; }
+  .msg-body p  { margin-bottom: 0.4rem; line-height: 1.55; }
+  .msg-body ul { list-style: disc; padding-left: 1.2rem; margin-bottom: 0.4rem; }
+  .msg-body li { margin-bottom: 0.15rem; }
+
+  .bubble-user      { background: oklch(var(--p)/.15); border-radius: 1rem 1rem 0.25rem 1rem; }
+  .bubble-assistant { background: oklch(var(--b2));    border-radius: 1rem 1rem 1rem 0.25rem; }
+
+  .script-item { cursor: pointer; }
+  .script-item.active { background: oklch(var(--p)/.15); }
+
+  .out-hdr {
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; user-select: none; padding: 0.2rem 0;
+  }
+  .out-hdr:hover { opacity: 0.75; }
+  .out-chevron { transition: transform 0.15s; }
+  .out-chevron.collapsed { transform: rotate(-90deg); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col h-[calc(100vh-6rem)]"
+     x-data="chatApp()"
+     id="chat-root"
+     x-on:set-code.window="useCode($event.detail.code)">
+
+  <!-- ── Top bar ─────────────────────────────────────────────────────────── -->
+  <div class="flex items-center justify-between mb-3 flex-shrink-0 gap-3">
+    <div class="flex items-center gap-3 flex-1 min-w-0">
+      <h1 class="text-2xl font-bold flex-shrink-0">Chat</h1>
+
+      <!-- Session selector -->
+      <div class="flex items-center gap-2 flex-1 min-w-0">
+        <select class="select select-bordered select-sm flex-1 min-w-0 max-w-xs"
+                x-model="currentSessionId"
+                @change="switchSession(Number($event.target.value))">
+          <option value="0" disabled>Select a session…</option>
+          <template x-for="s in sessions" :key="s.id">
+            <option :value="s.id" x-text="s.name"></option>
+          </template>
+        </select>
+        <button class="btn btn-ghost btn-sm btn-square" title="New session" @click="newSession()">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+        </button>
+        <button class="btn btn-ghost btn-sm btn-square" title="Rename session"
+                x-show="currentSessionId > 0" @click="renameSession()">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+          </svg>
+        </button>
+        <button class="btn btn-ghost btn-sm btn-square text-error" title="Delete session"
+                x-show="currentSessionId > 0" @click="deleteSession()">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <button class="btn btn-ghost btn-sm gap-1" @click="openMemoryModal()" title="View/edit assistant memory">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+        </svg>
+        Memory
+        <span x-show="memoryUpdated" class="badge badge-warning badge-xs">!</span>
+      </button>
+      <button class="btn btn-ghost btn-sm gap-1" @click="openGlobalMemoryModal()" title="View/edit cross-project memory">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/>
+        </svg>
+        Global Memory
+      </button>
+      {% if not llm_configured %}
+      <div class="alert alert-warning py-1 text-xs max-w-xs">
+        LLM not configured — <a href="/config" class="link">Config</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── Main two-panel layout ──────────────────────────────────────────── -->
+  <div class="flex gap-3 flex-1 min-h-0">
+
+    <!-- ── LEFT: Chat ───────────────────────────────────────────────────── -->
+    <div class="flex flex-col flex-1 min-h-0 min-w-0">
+
+      <!-- No session placeholder (always in DOM, shown/hidden) -->
+      <div x-show="currentSessionId === 0"
+           class="flex-1 flex items-center justify-center rounded-box bg-base-200 text-base-content/40 mb-3">
+        <div class="text-center">
+          <p class="font-medium mb-2">No session selected</p>
+          <button class="btn btn-primary btn-sm" @click="newSession()">Start a new session</button>
+        </div>
+      </div>
+
+      <!-- Message scroll area -->
+      <div x-show="currentSessionId > 0"
+           class="flex-1 overflow-y-auto rounded-box bg-base-200 p-4 space-y-4 mb-3"
+           x-ref="msgbox">
+
+        <div x-show="messages.length === 0"
+             class="flex flex-col items-center justify-center h-full text-base-content/40 select-none py-12">
+          <svg class="w-14 h-14 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3v-3z"/>
+          </svg>
+          <p class="text-sm font-medium">Ask anything about your experiments</p>
+          <p class="text-xs mt-1">e.g. "Plot accuracy vs. learning rate"</p>
+        </div>
+
+        <template x-for="msg in messages" :key="msg.id">
+          <div :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+            <div :class="msg.role === 'user' ? 'bubble-user max-w-[85%]' : 'bubble-assistant max-w-[92%]'"
+                 class="px-4 py-3 text-sm">
+              <div class="text-xs font-semibold mb-1 opacity-50"
+                   x-text="msg.role === 'user' ? 'You' : 'Assistant'"></div>
+              <div class="msg-body" x-html="msg.html"></div>
+            </div>
+          </div>
+        </template>
+
+        <div x-show="loading" class="flex justify-start">
+          <div class="bubble-assistant px-4 py-3">
+            <div class="flex gap-1 items-center h-5">
+              <span class="w-2 h-2 rounded-full bg-base-content/30 animate-bounce" style="animation-delay:0ms"></span>
+              <span class="w-2 h-2 rounded-full bg-base-content/30 animate-bounce" style="animation-delay:150ms"></span>
+              <span class="w-2 h-2 rounded-full bg-base-content/30 animate-bounce" style="animation-delay:300ms"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input area -->
+      <div class="card bg-base-200 shadow flex-shrink-0" x-show="currentSessionId > 0">
+        <div class="card-body p-3">
+          <textarea x-model="userInput"
+                    @keydown.ctrl.enter.prevent="sendMessage()"
+                    @keydown.meta.enter.prevent="sendMessage()"
+                    placeholder="Ask about your experiments… (Ctrl+Enter to send)"
+                    rows="3"
+                    class="textarea textarea-bordered w-full text-sm resize-none"></textarea>
+          <div class="flex items-center justify-between mt-2">
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-base-content/30">Ctrl+Enter to send</span>
+              <button class="btn btn-ghost btn-xs" @click="openLoadContextModal()"
+                      x-show="sessions.length > 1" title="Load context from another session">
+                Load context…
+              </button>
+            </div>
+            <div class="flex gap-2">
+              <button class="btn btn-ghost btn-sm" @click="clearChat()" x-show="messages.length > 0">
+                Clear view
+              </button>
+              <button class="btn btn-primary btn-sm" @click="sendMessage()"
+                      :disabled="loading || !userInput.trim()">
+                <span x-show="loading" class="loading loading-spinner loading-xs"></span>
+                <span x-show="!loading">Send</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RIGHT: Scripts ▸ Code editor ▸ Output ─────────────────────── -->
+    <div class="flex flex-col w-[42%] flex-shrink-0 min-h-0 gap-3">
+
+      <!-- Script list -->
+      <div class="card bg-base-200 shadow flex-shrink-0">
+        <div class="card-body p-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-semibold text-base-content/60 uppercase tracking-wide">Scripts</span>
+            <button class="btn btn-ghost btn-xs btn-square" title="New script" @click="newScript()">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+            </button>
+          </div>
+          <div class="max-h-36 overflow-y-auto space-y-1">
+            <p x-show="scripts.length === 0"
+               class="text-xs text-base-content/30 text-center py-2">No scripts yet</p>
+            <template x-for="sc in scripts" :key="sc.id">
+              <div class="script-item rounded px-2 py-1.5 group flex items-center justify-between"
+                   :class="{'active': currentScriptId === sc.id}"
+                   @click="loadScript(sc.id)">
+                <span class="text-xs truncate flex-1" x-text="sc.name"></span>
+                <div class="flex-shrink-0 hidden group-hover:flex gap-0.5">
+                  <button class="btn btn-ghost btn-xs btn-square p-0" title="Version history"
+                          @click.stop="openVersionHistory(sc.id, sc.name)">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                  </button>
+                  <button class="btn btn-ghost btn-xs btn-square p-0 text-error" title="Delete script"
+                          @click.stop="deleteScript(sc.id)">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- Code editor -->
+      <div class="card bg-base-200 shadow flex-1 min-h-0 flex flex-col">
+        <div class="card-body p-4 flex flex-col min-h-0 h-full">
+          <div class="flex items-center justify-between mb-2 flex-shrink-0">
+            <div class="flex items-center gap-2">
+              <h2 class="card-title text-sm">Code</h2>
+              <span x-show="currentScriptId"
+                    class="badge badge-ghost badge-sm font-mono cursor-pointer"
+                    x-text="currentScriptName"
+                    @click="renameCurrentScript()" title="Rename script"></span>
+              <span x-show="!currentScriptId && currentFilename"
+                    class="badge badge-ghost badge-sm font-mono"
+                    x-text="currentFilename"></span>
+            </div>
+            <div class="flex gap-1">
+              <button class="btn btn-ghost btn-xs" title="Save as script"
+                      @click="saveCurrentScript()" x-show="currentCode.trim()">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+                </svg>
+              </button>
+              <a x-show="currentFilename" :href="'/chat/download/' + currentFilename"
+                 class="btn btn-ghost btn-xs" title="Download">↓</a>
+              <button class="btn btn-primary btn-xs" @click="runCode()"
+                      :disabled="!currentCode.trim() || running">
+                <span x-show="running" class="loading loading-spinner loading-xs"></span>
+                <span x-show="!running">▶ Run</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex-1 min-h-0" x-ref="editorHost"></div>
+        </div>
+      </div>
+
+      <!-- Output panel -->
+      <div class="card bg-base-200 shadow flex-shrink-0 overflow-hidden"
+           x-show="execOutput !== null"
+           style="max-height: 45%;">
+        <div class="card-body p-3 overflow-y-auto h-full">
+
+          <!-- Output header with master collapse -->
+          <div class="out-hdr mb-1" @click="outputOpen = !outputOpen">
+            <h2 class="text-sm font-semibold">Output</h2>
+            <svg class="w-4 h-4 out-chevron" :class="{'collapsed': !outputOpen}"
+                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </div>
+
+          <div x-show="outputOpen" class="space-y-2">
+
+            <!-- Error -->
+            <div x-show="execOutput && execOutput.error"
+                 class="alert alert-error text-xs py-2">
+              <span x-text="execOutput ? execOutput.error : ''"></span>
+            </div>
+
+            <!-- Stderr -->
+            <div x-show="execOutput && execOutput.stderr">
+              <div class="out-hdr" @click.stop="stderrOpen = !stderrOpen">
+                <span class="text-xs text-warning font-semibold">Stderr</span>
+                <svg class="w-3 h-3 out-chevron" :class="{'collapsed': !stderrOpen}"
+                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+              </div>
+              <pre x-show="stderrOpen"
+                   class="text-xs bg-base-300 rounded p-2 overflow-x-auto max-h-40 whitespace-pre-wrap"
+                   x-text="execOutput ? execOutput.stderr : ''"></pre>
+            </div>
+
+            <!-- Stdout -->
+            <div x-show="execOutput && execOutput.stdout">
+              <div class="out-hdr" @click.stop="stdoutOpen = !stdoutOpen">
+                <span class="text-xs text-base-content/60 font-semibold">Output</span>
+                <svg class="w-3 h-3 out-chevron" :class="{'collapsed': !stdoutOpen}"
+                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+              </div>
+              <pre x-show="stdoutOpen"
+                   class="text-xs bg-base-300 rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap"
+                   x-text="execOutput ? execOutput.stdout : ''"></pre>
+            </div>
+
+            <!-- Plots -->
+            <div x-show="execOutput && execOutput.plots && execOutput.plots.length > 0">
+              <div class="out-hdr" @click.stop="plotsOpen = !plotsOpen">
+                <span class="text-xs text-base-content/60 font-semibold">
+                  Plots (<span x-text="execOutput ? (execOutput.plots || []).length : 0"></span>)
+                </span>
+                <svg class="w-3 h-3 out-chevron" :class="{'collapsed': !plotsOpen}"
+                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+              </div>
+              <div x-show="plotsOpen" class="space-y-2 mt-1">
+                <template x-for="(plot, i) in (execOutput ? execOutput.plots : [])" :key="i">
+                  <div>
+                    <img :src="'/chat/output/' + plot" :alt="'Plot ' + (i+1)"
+                         class="rounded-lg w-full border border-base-300">
+                    <div class="flex justify-end mt-1">
+                      <a :href="'/chat/download/' + plot" class="btn btn-ghost btn-xs">↓ Save plot</a>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- No output -->
+            <div x-show="execOutput && !execOutput.error && !execOutput.stdout && !execOutput.stderr && (!execOutput.plots || execOutput.plots.length === 0)"
+                 class="text-xs text-base-content/40 text-center py-2">
+              Code ran successfully with no output.
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /right panel -->
+  </div><!-- /main layout -->
+
+  <!-- ── Memory modal ───────────────────────────────────────────────────── -->
+  <div x-show="showMemoryModal" class="modal modal-open" @click.self="showMemoryModal = false">
+    <div class="modal-box max-w-2xl">
+      <h3 class="font-bold text-lg mb-3">Assistant Memory</h3>
+      <p class="text-xs text-base-content/50 mb-3">
+        Markdown notes the assistant keeps across sessions. You can edit this directly.
+      </p>
+      <textarea class="code-ta rounded-lg" style="height: 280px;"
+                x-model="memoryContent"
+                placeholder="No memory stored yet."></textarea>
+      <div class="modal-action mt-3">
+        <button class="btn btn-ghost btn-sm" @click="showMemoryModal = false">Cancel</button>
+        <button class="btn btn-primary btn-sm" @click="saveMemory()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Global memory modal ────────────────────────────────────────────── -->
+  <div x-show="showGlobalMemoryModal" class="modal modal-open" @click.self="showGlobalMemoryModal = false">
+    <div class="modal-box max-w-2xl">
+      <h3 class="font-bold text-lg mb-1">Cross-Project Memory</h3>
+      <p class="text-xs text-base-content/50 mb-3">
+        Shared across all projects. The assistant reads this at the start of every conversation.
+      </p>
+      <textarea class="code-ta rounded-lg" style="height: 280px;"
+                x-model="globalMemoryContent"
+                placeholder="No global memory yet."></textarea>
+      <div class="modal-action mt-3">
+        <button class="btn btn-ghost btn-sm" @click="showGlobalMemoryModal = false">Cancel</button>
+        <button class="btn btn-primary btn-sm" @click="saveGlobalMemory()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Load context modal ─────────────────────────────────────────────── -->
+  <div x-show="showLoadContextModal" class="modal modal-open" @click.self="showLoadContextModal = false">
+    <div class="modal-box max-w-lg">
+      <h3 class="font-bold text-lg mb-3">Load Context from Session</h3>
+      <p class="text-xs text-base-content/50 mb-3">
+        Select a session to inject its messages as context into your current conversation.
+      </p>
+      <div class="space-y-1 max-h-64 overflow-y-auto">
+        <template x-for="s in sessions.filter(s => s.id !== currentSessionId)" :key="s.id">
+          <div class="flex items-center justify-between p-2 rounded hover:bg-base-300 cursor-pointer"
+               @click="loadContext(s.id)">
+            <span class="text-sm" x-text="s.name"></span>
+            <span class="text-xs text-base-content/40"
+                  x-text="s.updated_at ? s.updated_at.slice(0,16) : ''"></span>
+          </div>
+        </template>
+      </div>
+      <div class="modal-action mt-3">
+        <button class="btn btn-ghost btn-sm" @click="showLoadContextModal = false">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Version history modal ──────────────────────────────────────────── -->
+  <div x-show="showVersionModal" class="modal modal-open" @click.self="showVersionModal = false">
+    <div class="modal-box max-w-lg">
+      <h3 class="font-bold text-lg mb-3">
+        Version History: <span x-text="versionModalScriptName"></span>
+      </h3>
+      <div class="space-y-1 max-h-72 overflow-y-auto">
+        <p x-show="versions.length === 0"
+           class="text-xs text-base-content/40 text-center py-4">No versions found.</p>
+        <template x-for="(v, i) in versions" :key="v.id">
+          <div class="flex items-center justify-between p-2 rounded hover:bg-base-300">
+            <div>
+              <span class="text-xs font-mono" x-text="'v' + (versions.length - i)"></span>
+              <span class="text-xs text-base-content/50 ml-2"
+                    x-text="v.created_at ? v.created_at.slice(0,16) : ''"></span>
+            </div>
+            <button class="btn btn-ghost btn-xs"
+                    @click="restoreVersion(versionModalScriptId, v.id)">
+              Restore
+            </button>
+          </div>
+        </template>
+      </div>
+      <div class="modal-action mt-3">
+        <button class="btn btn-ghost btn-sm" @click="showVersionModal = false">Close</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// ── Message formatter ────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function formatMessage(text) {
+  const re = /```(?:\w*)\n([\s\S]*?)```/g;
+  const parts = [];
+  let last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push({t: 'text', v: text.slice(last, m.index)});
+    parts.push({t: 'code', v: m[1]});
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push({t: 'text', v: text.slice(last)});
+
+  return parts.map(p => {
+    if (p.t === 'code') {
+      const enc = encodeURIComponent(p.v);
+      return `<pre>${escHtml(p.v)}</pre>` +
+        `<div class="flex justify-end -mt-1 mb-1">` +
+        `<button onclick="document.dispatchEvent(new CustomEvent('set-code',{detail:{code:decodeURIComponent('${enc}')}}))"` +
+        ` class="btn btn-xs btn-ghost">Use in editor ↗</button></div>`;
+    }
+    let html = escHtml(p.v.trim());
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    html = html.replace(/^[*\-] (.+)$/gm, '<li>$1</li>');
+    html = html.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
+    html = html.split(/\n\n+/).map(b => b.startsWith('<ul>') ? b : '<p>' + b.replace(/\n/g, '<br>') + '</p>').join('');
+    return html;
+  }).join('');
+}
+
+// ── Alpine component ─────────────────────────────────────────────────────────
+function chatApp() {
+  return {
+    // Session state
+    sessions: {{ sessions | tojson | safe }},
+    currentSessionId: 0,
+
+    // Chat state
+    messages: [],
+    history: [],
+    userInput: '',
+    loading: false,
+
+    // Code / script state
+    currentCode: '',
+    currentFilename: '',
+    currentScriptId: null,
+    currentScriptName: '',
+    scripts: [],
+    running: false,
+    execOutput: null,
+
+    // Output section collapse
+    outputOpen: true,
+    stdoutOpen: true,
+    stderrOpen: true,
+    plotsOpen: true,
+
+    // Memory
+    memoryContent: '',
+    memoryUpdated: false,
+    showMemoryModal: false,
+
+    // Global memory
+    showGlobalMemoryModal: false,
+    globalMemoryContent: '',
+
+    // Modals
+    showLoadContextModal: false,
+    showVersionModal: false,
+    versionModalScriptId: null,
+    versionModalScriptName: '',
+    versions: [],
+
+    async init() {
+      this._cm = null;  // non-reactive, holds the CodeMirror instance
+
+      try {
+        await this.refreshScripts();
+      } catch(e) { console.warn('scripts load failed', e); }
+
+      try {
+        if (this.sessions.length > 0) {
+          await this.switchSession(this.sessions[0].id);
+        } else {
+          const r = await fetch('/chat/sessions', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: 'Session 1'}),
+          });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const s = await r.json();
+          this.sessions = [s];
+          this.currentSessionId = s.id;
+        }
+      } catch(e) {
+        console.warn('session init failed', e);
+      }
+
+      this.$nextTick(() => this._initEditor());
+    },
+
+    _initEditor() {
+      const host = this.$refs.editorHost;
+      if (!host || !window.CodeMirror) return;
+
+      this._cm = CodeMirror(host, {
+        value: this.currentCode || '',
+        mode: 'python',
+        theme: 'dracula',
+        lineNumbers: true,
+        lineWrapping: false,
+        indentUnit: 2,
+        tabSize: 2,
+        indentWithTabs: false,
+        extraKeys: {
+          'Tab':        cm => cm.replaceSelection('  '),
+          'Ctrl-Enter': () => this.runCode(),
+          'Cmd-Enter':  () => this.runCode(),
+        },
+      });
+      this._cm.setSize('100%', '100%');
+
+      // CodeMirror → Alpine: keep currentCode in sync as user types
+      this._cm.on('change', cm => {
+        const v = cm.getValue();
+        if (v !== this.currentCode) this.currentCode = v;
+      });
+
+      // Alpine → CodeMirror: update editor when code is set programmatically
+      this.$watch('currentCode', val => {
+        if (this._cm && val !== this._cm.getValue()) {
+          this._cm.setValue(val || '');
+        }
+      });
+
+      // Let the flex layout settle before first render
+      setTimeout(() => this._cm && this._cm.refresh(), 80);
+    },
+
+    // ── Sessions ────────────────────────────────────────────────────────
+
+    async refreshSessions() {
+      const r = await fetch('/chat/sessions');
+      this.sessions = await r.json();
+    },
+
+    async newSession() {
+      const name = prompt('Session name:', 'Session ' + (this.sessions.length + 1));
+      if (!name) return;
+      const r = await fetch('/chat/sessions', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name}),
+      });
+      const s = await r.json();
+      this.sessions.unshift(s);
+      await this.switchSession(s.id);
+    },
+
+    async renameSession() {
+      const s = this.sessions.find(x => x.id === this.currentSessionId);
+      if (!s) return;
+      const name = prompt('New name:', s.name);
+      if (!name || name === s.name) return;
+      await fetch(`/chat/sessions/${this.currentSessionId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name}),
+      });
+      s.name = name;
+    },
+
+    async deleteSession() {
+      if (!confirm('Delete this session and all its messages?')) return;
+      await fetch(`/chat/sessions/${this.currentSessionId}`, {method: 'DELETE'});
+      this.sessions = this.sessions.filter(s => s.id !== this.currentSessionId);
+      this.currentSessionId = 0;
+      this.messages = [];
+      this.history = [];
+      if (this.sessions.length > 0) await this.switchSession(this.sessions[0].id);
+    },
+
+    async switchSession(id) {
+      this.currentSessionId = id;
+      const r = await fetch(`/chat/sessions/${id}/messages`);
+      const msgs = await r.json();
+      this.messages = msgs.map((m, i) => ({
+        id: m.id || i,
+        role: m.role,
+        html: m.role === 'user'
+          ? '<p>' + escHtml(m.content) + '</p>'
+          : formatMessage(m.content),
+      }));
+      this.history = msgs.map(m => ({role: m.role, content: m.content}));
+      this.$nextTick(() => this._scrollBottom());
+    },
+
+    // ── Memory ──────────────────────────────────────────────────────────
+
+    async openMemoryModal() {
+      const r = await fetch('/chat/memory');
+      const d = await r.json();
+      this.memoryContent = d.content || '';
+      this.memoryUpdated = false;
+      this.showMemoryModal = true;
+    },
+
+    async saveMemory() {
+      await fetch('/chat/memory', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({content: this.memoryContent}),
+      });
+      this.showMemoryModal = false;
+    },
+
+    // ── Global memory ────────────────────────────────────────────────────
+
+    async openGlobalMemoryModal() {
+      const r = await fetch('/chat/global-memory');
+      const d = await r.json();
+      this.globalMemoryContent = d.content || '';
+      this.showGlobalMemoryModal = true;
+    },
+
+    async saveGlobalMemory() {
+      await fetch('/chat/global-memory', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({content: this.globalMemoryContent}),
+      });
+      this.showGlobalMemoryModal = false;
+    },
+
+    // ── Load context ────────────────────────────────────────────────────
+
+    openLoadContextModal() { this.showLoadContextModal = true; },
+
+    async loadContext(sessionId) {
+      this.showLoadContextModal = false;
+      const r = await fetch(`/chat/sessions/${sessionId}/messages`);
+      const msgs = await r.json();
+      if (!msgs.length) return;
+      const summary = msgs.map(m => `[${m.role}]: ${m.content}`).join('\n\n');
+      const injectMsg = `[Context loaded from another session]\n\n${summary}`;
+      this.history.push({role: 'user', content: injectMsg});
+      this.messages.push({
+        id: Date.now(), role: 'user',
+        html: '<p class="text-base-content/50 italic text-xs">Context loaded from session.</p>',
+      });
+      this.$nextTick(() => this._scrollBottom());
+    },
+
+    // ── Chat ────────────────────────────────────────────────────────────
+
+    async sendMessage() {
+      const text = this.userInput.trim();
+      if (!text || this.loading || this.currentSessionId === 0) return;
+      this.userInput = '';
+
+      this.messages.push({id: Date.now(), role: 'user', html: '<p>' + escHtml(text) + '</p>'});
+      this.history.push({role: 'user', content: text});
+      this.loading = true;
+      this.$nextTick(() => this._scrollBottom());
+
+      try {
+        const resp = await fetch('/chat/message', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({session_id: this.currentSessionId, messages: this.history}),
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        this.messages.push({id: Date.now() + 1, role: 'assistant', html: formatMessage(data.content)});
+        this.history.push({role: 'assistant', content: data.content});
+
+        if (data.memory_updated) this.memoryUpdated = true;
+
+        if (data.code) {
+          this.currentCode = data.code;
+          this.currentFilename = data.filename || '';
+          this.currentScriptId = null;
+          this.currentScriptName = '';
+          this.execOutput = null;
+        }
+
+        const s = this.sessions.find(x => x.id === this.currentSessionId);
+        if (s) s.updated_at = new Date().toISOString();
+
+      } catch (err) {
+        this.messages.push({
+          id: Date.now() + 2, role: 'assistant',
+          html: '<p class="text-error">Error: ' + escHtml(String(err)) + '</p>',
+        });
+      } finally {
+        this.loading = false;
+        this.$nextTick(() => this._scrollBottom());
+      }
+    },
+
+    clearChat() {
+      this.messages = [];
+      this.history = [];
+    },
+
+    // ── Code runner ─────────────────────────────────────────────────────
+
+    async runCode() {
+      if (!this.currentCode.trim() || this.running) return;
+      this.running = true;
+      this.execOutput = null;
+      try {
+        const resp = await fetch('/chat/execute', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({code: this.currentCode}),
+        });
+        this.execOutput = await resp.json();
+        // Reset collapse state when new output arrives
+        this.outputOpen = true;
+        this.stdoutOpen = true;
+        this.stderrOpen = true;
+        this.plotsOpen = true;
+      } catch (err) {
+        this.execOutput = {stdout: '', stderr: '', plots: [], error: String(err)};
+      } finally {
+        this.running = false;
+      }
+    },
+
+    useCode(code) {
+      this.currentCode = code;
+      this.currentFilename = '';
+      this.currentScriptId = null;
+      this.currentScriptName = '';
+      this.execOutput = null;
+    },
+
+    // ── Scripts ─────────────────────────────────────────────────────────
+
+    async refreshScripts() {
+      const r = await fetch('/chat/scripts');
+      this.scripts = await r.json();
+    },
+
+    async newScript() {
+      const name = prompt('Script name:', 'analysis_' + Date.now());
+      if (!name) return;
+      const r = await fetch('/chat/scripts', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name, content: this.currentCode}),
+      });
+      const sc = await r.json();
+      this.scripts.unshift(sc);
+      this.currentScriptId = sc.id;
+      this.currentScriptName = sc.name;
+      this.currentFilename = sc.name;
+    },
+
+    async saveCurrentScript() {
+      if (!this.currentCode.trim()) return;
+      if (this.currentScriptId) {
+        await fetch(`/chat/scripts/${this.currentScriptId}`, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name: this.currentScriptName, content: this.currentCode}),
+        });
+        const sc = this.scripts.find(x => x.id === this.currentScriptId);
+        if (sc) sc.updated_at = new Date().toISOString();
+      } else {
+        await this.newScript();
+      }
+    },
+
+    async loadScript(scriptId) {
+      this.currentScriptId = scriptId;
+      const sc = this.scripts.find(x => x.id === scriptId);
+      this.currentScriptName = sc ? sc.name : '';
+      const r = await fetch(`/chat/scripts/${scriptId}/versions`);
+      const versions = await r.json();
+      if (!versions.length) { this.currentCode = ''; return; }
+      const rv = await fetch(`/chat/scripts/${scriptId}/versions/${versions[0].id}`);
+      const vd = await rv.json();
+      this.currentCode = vd.content;
+      this.currentFilename = this.currentScriptName;
+      this.execOutput = null;
+    },
+
+    async renameCurrentScript() {
+      if (!this.currentScriptId) return;
+      const name = prompt('Rename script:', this.currentScriptName);
+      if (!name || name === this.currentScriptName) return;
+      await fetch(`/chat/scripts/${this.currentScriptId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name, content: this.currentCode}),
+      });
+      this.currentScriptName = name;
+      const sc = this.scripts.find(x => x.id === this.currentScriptId);
+      if (sc) sc.name = name;
+    },
+
+    async deleteScript(scriptId) {
+      if (!confirm('Delete this script and all its versions?')) return;
+      await fetch(`/chat/scripts/${scriptId}`, {method: 'DELETE'});
+      this.scripts = this.scripts.filter(x => x.id !== scriptId);
+      if (this.currentScriptId === scriptId) {
+        this.currentScriptId = null;
+        this.currentScriptName = '';
+      }
+    },
+
+    async openVersionHistory(scriptId, scriptName) {
+      this.versionModalScriptId = scriptId;
+      this.versionModalScriptName = scriptName;
+      const r = await fetch(`/chat/scripts/${scriptId}/versions`);
+      this.versions = await r.json();
+      this.showVersionModal = true;
+    },
+
+    async restoreVersion(scriptId, versionId) {
+      const r = await fetch(`/chat/scripts/${scriptId}/versions/${versionId}`);
+      const v = await r.json();
+      this.currentCode = v.content;
+      this.currentScriptId = scriptId;
+      const sc = this.scripts.find(x => x.id === scriptId);
+      this.currentScriptName = sc ? sc.name : '';
+      this.execOutput = null;
+      this.showVersionModal = false;
+    },
+
+    // ── Helpers ─────────────────────────────────────────────────────────
+
+    _scrollBottom() {
+      const box = this.$refs.msgbox;
+      if (box) box.scrollTop = box.scrollHeight;
+    },
+  };
+}
+</script>
+{% endblock %}

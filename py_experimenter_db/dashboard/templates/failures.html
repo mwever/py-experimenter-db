@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Failure Analysis – PyExperimenter Dashboard{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">Failure Analysis</h1>
+    {% if groups %}
+    <div class="badge badge-error badge-lg">{{ groups | sum(attribute='count') }} failed</div>
+    {% endif %}
+  </div>
+
+  {% if groups %}
+
+  {% for group in groups %}
+  <div class="card bg-base-200 shadow mb-4" x-data="{expanded: false, stackLoaded: false}">
+    <div class="card-body p-4">
+
+      <!-- Group header -->
+      <div class="flex items-start justify-between gap-4">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="badge badge-error badge-sm">{{ group.count }} experiment(s)</span>
+          </div>
+          <pre class="font-mono text-sm text-error/90 bg-base-300 rounded p-2 whitespace-pre-wrap break-words">{{ group.error_type or "(no message)" }}</pre>
+          <div class="text-xs text-base-content/40 mt-1">
+            IDs: {{ group.experiment_ids[:10] | join(", ") }}{% if group.experiment_ids | length > 10 %}, …{% endif %}
+          </div>
+          {% if group.sample_exception %}
+          <details class="mt-2">
+            <summary class="text-xs text-base-content/40 cursor-pointer hover:text-base-content/70 select-none">
+              Sample traceback
+            </summary>
+            <pre class="mt-1 font-mono text-xs bg-base-300 rounded p-2 whitespace-pre-wrap break-words max-h-48 overflow-y-auto">{{ group.sample_exception }}</pre>
+          </details>
+          {% endif %}
+        </div>
+
+        <!-- Actions -->
+        <div class="flex flex-col gap-2 flex-shrink-0">
+          <!-- Rerun group form -->
+          <form hx-post="/failures/rerun-group"
+                hx-target="#toast-area"
+                hx-swap="afterbegin">
+            <input type="hidden" name="ids" value="{{ group.experiment_ids | join(',') }}">
+            <div class="flex items-center gap-1 mb-1">
+              <input type="checkbox" name="delete_logtable" value="true"
+                     class="checkbox checkbox-xs" id="del-lt-{{ loop.index }}">
+              <label for="del-lt-{{ loop.index }}" class="text-xs text-base-content/50 cursor-pointer">
+                Delete logtable data
+              </label>
+            </div>
+            <button type="submit" class="btn btn-warning btn-sm w-full"
+                    hx-confirm="Reset all {{ group.count }} experiment(s) in this group?">
+              ↺ Rerun group
+            </button>
+          </form>
+
+          <!-- Expand stack trace button -->
+          <button class="btn btn-ghost btn-sm"
+                  @click="expanded = !expanded; if(expanded && !stackLoaded) { stackLoaded = true; }">
+            <span x-text="expanded ? 'Hide traces' : 'Show traces'">Show traces</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Per-experiment list (expanded) -->
+      <div x-show="expanded" class="mt-4 space-y-3">
+        {% for exp_id in group.experiment_ids %}
+        <div class="bg-base-300 rounded-lg p-3" x-data="{traceOpen: false, traceLoaded: false}">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <span class="font-mono text-sm font-bold">#{{ exp_id }}</span>
+              <a href="/experiments/{{ exp_id }}" class="btn btn-ghost btn-xs">View</a>
+            </div>
+            <div class="flex items-center gap-2">
+              <!-- Rerun individual -->
+              <form hx-post="/failures/rerun"
+                    hx-target="#toast-area"
+                    hx-swap="afterbegin">
+                <input type="hidden" name="ids" value="{{ exp_id }}">
+                <button type="submit" class="btn btn-warning btn-xs">↺ Rerun</button>
+              </form>
+              <!-- Show trace -->
+              <button class="btn btn-ghost btn-xs"
+                      @click="traceOpen = !traceOpen"
+                      hx-get="/failures/exception/{{ exp_id }}"
+                      hx-target="#trace-{{ exp_id }}"
+                      hx-trigger="click once"
+                      hx-swap="innerHTML">
+                <span x-text="traceOpen ? '▲ Hide' : '▼ Trace'">▼ Trace</span>
+              </button>
+            </div>
+          </div>
+          <div id="trace-{{ exp_id }}" x-show="traceOpen" class="mt-2">
+            <!-- Lazy loaded via HTMX -->
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+    </div>
+  </div>
+  {% endfor %}
+
+  {% else %}
+  <div class="card bg-base-200 shadow p-12 text-center">
+    <svg class="w-16 h-16 mx-auto mb-4 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <div class="text-xl font-semibold text-base-content/70">No failures found</div>
+    <div class="text-base-content/40 mt-1">All experiments are healthy</div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

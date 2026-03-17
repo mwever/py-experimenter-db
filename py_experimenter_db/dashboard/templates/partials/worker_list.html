@@ -1,0 +1,46 @@
+<div id="worker-list"
+     hx-get="/api/workers"
+     hx-trigger="every {{ settings.ui_refresh_interval }}s"
+     hx-swap="outerHTML">
+
+  {% if workers %}
+  <div class="overflow-x-auto">
+    <table class="table table-sm">
+      <thead>
+        <tr>
+          <th>Worker</th>
+          <th class="text-right">Active Jobs</th>
+          <th>Running Since</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for w in workers %}
+        <tr>
+          <td>
+            <div class="flex items-center gap-2">
+              <span class="inline-block w-2 h-2 rounded-full bg-success animate-pulse"></span>
+              <span class="font-mono text-sm">{{ w.machine or "(unknown)" }}</span>
+            </div>
+          </td>
+          <td class="text-right">
+            <span class="badge badge-info badge-sm">{{ w.job_count }}</span>
+          </td>
+          <td class="text-base-content/50 text-sm">
+            {{ w.oldest_start or "—" }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="text-center py-8 text-base-content/40">
+    <svg class="w-10 h-10 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+    </svg>
+    No active workers
+  </div>
+  {% endif %}
+
+</div>

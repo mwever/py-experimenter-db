@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Carbon Footprint – PyExperimenter Dashboard{% endblock %}
+
+{% block extra_head %}
+{% if summary and timeseries %}
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+
+  <h1 class="text-2xl font-bold mb-6">Carbon Footprint</h1>
+
+  {% if not summary %}
+  <div class="card bg-base-200 shadow p-12 text-center">
+    <svg class="w-16 h-16 mx-auto mb-4 text-base-content/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"/>
+    </svg>
+    <div class="text-xl font-semibold text-base-content/70">Carbon tracking not enabled</div>
+    <div class="text-base-content/40 mt-1 max-w-md mx-auto">
+      Enable CodeCarbon in your PyExperimenter configuration to track carbon emissions.
+      A <code class="font-mono text-sm bg-base-300 px-1 rounded">{{ table_name }}_codecarbon</code> table
+      will be created automatically.
+    </div>
+  </div>
+
+  {% else %}
+
+  <!-- Summary stats -->
+  <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
+
+    <div class="stat bg-base-200 rounded-box shadow">
+      <div class="stat-title">Total CO₂</div>
+      <div class="stat-value text-xl text-warning">{{ "%.4f" | format(summary.total_kg_co2) }}</div>
+      <div class="stat-desc">kg CO₂-eq</div>
+    </div>
+
+    <div class="stat bg-base-200 rounded-box shadow">
+      <div class="stat-title">Energy Used</div>
+      <div class="stat-value text-xl text-info">{{ "%.4f" | format(summary.total_kwh) }}</div>
+      <div class="stat-desc">kWh</div>
+    </div>
+
+    <div class="stat bg-base-200 rounded-box shadow">
+      <div class="stat-title">Avg Rate</div>
+      <div class="stat-value text-lg">{{ "%.2e" | format(summary.avg_rate_kg_sec) }}</div>
+      <div class="stat-desc">kg CO₂/sec</div>
+    </div>
+
+    <div class="stat bg-base-200 rounded-box shadow">
+      <div class="stat-title">Total Runs</div>
+      <div class="stat-value text-xl">{{ summary.n_runs | fmt_number }}</div>
+    </div>
+
+    <div class="stat bg-base-200 rounded-box shadow">
+      <div class="stat-title">Experiments</div>
+      <div class="stat-value text-xl">{{ summary.n_experiments | fmt_number }}</div>
+    </div>
+
+  </div>
+
+  {% if timeseries %}
+
+  <!-- Emissions over time -->
+  <div class="card bg-base-200 shadow mb-4">
+    <div class="card-body p-4">
+      <h2 class="card-title text-base mb-2">Emissions Over Time</h2>
+      <div id="chart-emissions" style="height:300px;width:100%;"></div>
+    </div>
+  </div>
+
+  <!-- Power breakdown -->
+  <div class="card bg-base-200 shadow mb-4">
+    <div class="card-body p-4">
+      <h2 class="card-title text-base mb-2">Power Breakdown (CPU / GPU / RAM)</h2>
+      <div id="chart-power" style="height:300px;width:100%;"></div>
+    </div>
+  </div>
+
+  <!-- Per-experiment energy -->
+  <div class="card bg-base-200 shadow mb-4">
+    <div class="card-body p-4">
+      <h2 class="card-title text-base mb-2">Energy per Experiment</h2>
+      <div id="chart-per-exp" style="height:300px;width:100%;"></div>
+    </div>
+  </div>
+
+  <!-- Chart data embedded server-side to avoid extra fetch -->
+  <script id="carbon-data" type="application/json">{{ timeseries | tojson }}</script>
+
+  {% else %}
+  <div class="card bg-base-200 shadow p-8 text-center text-base-content/40">
+    No carbon data recorded yet
+  </div>
+  {% endif %}
+
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if summary and timeseries %}
+<script>
+(function () {
+  if (typeof Plotly === 'undefined') {
+    ['chart-emissions', 'chart-power', 'chart-per-exp'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) {
+        el.innerHTML = '<div class="flex items-center justify-center h-full text-sm text-base-content/40">'
+          + 'Plotly failed to load — check your network connection.</div>';
+      }
+    });
+    return;
+  }
+
+  var raw = document.getElementById('carbon-data');
+  if (!raw) return;
+  var data = JSON.parse(raw.textContent);
+  if (!data || !data.length) return;
+
+  var layout = {
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    plot_bgcolor:  'rgba(0,0,0,0)',
+    font:   { color: '#9ca3af', size: 12 },
+    legend: { bgcolor: 'rgba(0,0,0,0)', font: { color: '#9ca3af' } },
+    margin: { t: 10, r: 20, b: 55, l: 70 },
+  };
+  var axis = { gridcolor: '#374151', zeroline: false, color: '#9ca3af' };
+  var cfg  = { responsive: true, displaylogo: false };
+
+  // ── Chart 1: Emissions over time ──────────────────────────────────────────
+  Plotly.newPlot('chart-emissions', [{
+    x:    data.map(function (r) { return r.codecarbon_timestamp; }),
+    y:    data.map(function (r) { return r.emissions_kg || 0; }),
+    type: 'scatter', mode: 'lines+markers',
+    name: 'CO₂ (kg)',
+    line:   { color: '#f59e0b', width: 2 },
+    marker: { size: 4, color: '#f59e0b' },
+  }], Object.assign({}, layout, {
+    xaxis: Object.assign({ title: 'Time' }, axis),
+    yaxis: Object.assign({ title: 'kg CO₂-eq' }, axis),
+  }), cfg);
+
+  // ── Chart 2: Power breakdown per experiment ───────────────────────────────
+  var expIds = data.map(function (r) { return String(r.experiment_id); });
+  Plotly.newPlot('chart-power', [
+    {
+      x: expIds, y: data.map(function (r) { return r.cpu_power_watt || 0; }),
+      type: 'bar', name: 'CPU (W)', marker: { color: '#6366f1' },
+    },
+    {
+      x: expIds, y: data.map(function (r) { return r.gpu_power_watt || 0; }),
+      type: 'bar', name: 'GPU (W)', marker: { color: '#10b981' },
+    },
+    {
+      x: expIds, y: data.map(function (r) { return r.ram_power_watt || 0; }),
+      type: 'bar', name: 'RAM (W)', marker: { color: '#f59e0b' },
+    },
+  ], Object.assign({}, layout, {
+    barmode: 'stack',
+    xaxis: Object.assign({ title: 'Experiment ID' }, axis),
+    yaxis: Object.assign({ title: 'Power (W)' }, axis),
+  }), cfg);
+
+  // ── Chart 3: Total energy per experiment ─────────────────────────────────
+  var energyMap = {};
+  data.forEach(function (r) {
+    var k = String(r.experiment_id);
+    energyMap[k] = (energyMap[k] || 0) + (r.energy_consumed_kw || 0);
+  });
+  var expKeys = Object.keys(energyMap).sort(function (a, b) { return Number(a) - Number(b); });
+  Plotly.newPlot('chart-per-exp', [{
+    x:    expKeys,
+    y:    expKeys.map(function (k) { return energyMap[k]; }),
+    type: 'bar',
+    name: 'Energy (kWh)',
+    marker: { color: '#06b6d4' },
+  }], Object.assign({}, layout, {
+    xaxis: Object.assign({ title: 'Experiment ID' }, axis),
+    yaxis: Object.assign({ title: 'kWh' }, axis),
+  }), cfg);
+
+}());
+</script>
+{% endif %}
+{% endblock %}

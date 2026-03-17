@@ -1,0 +1,24 @@
+<div id="query-history-list" class="space-y-1 max-h-72 overflow-y-auto">
+  {% for entry in history %}
+  <div class="group flex items-start gap-2 p-2 rounded hover:bg-base-300 cursor-pointer"
+       x-data
+       @click="window.loadQueryIntoEditor({{ entry.sql_text | tojson }})">
+    <div class="flex-1 min-w-0">
+      <div class="font-mono text-xs text-base-content/80 truncate">{{ entry.sql_text }}</div>
+      <div class="text-xs text-base-content/40 mt-0.5">
+        {{ entry.executed_at }}
+        {% if entry.error %}
+          <span class="text-error ml-1">error</span>
+        {% elif entry.row_count is not none %}
+          <span class="text-success ml-1">{{ entry.row_count }} rows</span>
+        {% endif %}
+        {% if entry.duration_ms is not none %}
+          <span class="ml-1">{{ entry.duration_ms }}ms</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="text-center py-4 text-base-content/40 text-sm">No history yet</div>
+  {% endfor %}
+</div>
