@@ -19,7 +19,7 @@ router = APIRouter(prefix="/failures")
 async def failures_page(request: Request) -> HTMLResponse:
     state = get_state(request)
     templates = get_templates(request)
-    groups = await get_failure_groups(state.pool, state.schema)
+    groups = await get_failure_groups(state.db, state.schema)
     return templates.TemplateResponse(
         request=request,
         name="failures.html",
@@ -31,7 +31,7 @@ async def failures_page(request: Request) -> HTMLResponse:
 async def get_exception(request: Request, experiment_id: int) -> HTMLResponse:
     state = get_state(request)
     templates = get_templates(request)
-    exc = await get_experiment_exception(state.pool, state.schema, experiment_id)
+    exc = await get_experiment_exception(state.db, state.schema, experiment_id)
     return templates.TemplateResponse(
         request=request,
         name="partials/exception_detail.html",
@@ -54,7 +54,7 @@ async def rerun_selected(
     except ValueError:
         return HTMLResponse("Invalid experiment IDs", status_code=400)
 
-    count = await rerun_experiments(state.pool, state.schema, ids, delete_logtable_data=delete_logtable)
+    count = await rerun_experiments(state.db, state.schema, ids, delete_logtable_data=delete_logtable)
     return templates.TemplateResponse(
         request=request,
         name="partials/toast.html",
@@ -77,7 +77,7 @@ async def rerun_group(
     except ValueError:
         return HTMLResponse("Invalid experiment IDs", status_code=400)
 
-    count = await rerun_experiments(state.pool, state.schema, ids, delete_logtable_data=delete_logtable)
+    count = await rerun_experiments(state.db, state.schema, ids, delete_logtable_data=delete_logtable)
     return templates.TemplateResponse(
         request=request,
         name="partials/toast.html",

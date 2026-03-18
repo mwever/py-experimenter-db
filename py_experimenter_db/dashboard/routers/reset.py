@@ -37,7 +37,7 @@ async def reset_preview(request: Request) -> HTMLResponse:
     }
 
     candidates = await search_experiments_for_reset(
-        state.pool, state.schema, statuses, keyfield_filters
+        state.db, state.schema, statuses, keyfield_filters
     )
     return templates.TemplateResponse(
         request=request,
@@ -62,7 +62,7 @@ async def reset_execute(request: Request) -> HTMLResponse:
     delete_codecarbon = bool(form.get("delete_codecarbon"))
 
     count = await rerun_experiments(
-        state.pool, state.schema, ids,
+        state.db, state.schema, ids,
         delete_logtable_data=delete_logtable,
         delete_codecarbon=delete_codecarbon,
     )

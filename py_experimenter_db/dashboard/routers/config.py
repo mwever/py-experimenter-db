@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import json
+import os
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from py_experimenter_db.dashboard.app import get_state, get_templates, reload_settings
-from py_experimenter_db.dashboard.settings import settings_to_db
+from py_experimenter_db.dashboard.settings import (
+    _ENV_LLM_MODEL,
+    _ENV_LLM_TOKEN,
+    _ENV_LLM_URL,
+    settings_to_db,
+)
 
 router = APIRouter(prefix="/config")
 
@@ -20,7 +26,17 @@ async def config_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="config.html",
-        context={"all_columns": state.schema.all_columns},
+        context={
+            "all_columns": state.schema.all_columns,
+            "llm_env": {
+                "url":   os.environ.get(_ENV_LLM_URL,   ""),
+                "token": os.environ.get(_ENV_LLM_TOKEN, ""),
+                "model": os.environ.get(_ENV_LLM_MODEL, ""),
+                "url_var":   _ENV_LLM_URL,
+                "token_var": _ENV_LLM_TOKEN,
+                "model_var": _ENV_LLM_MODEL,
+            },
+        },
     )
 
 

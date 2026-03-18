@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 import aiomysql
 
 from py_experimenter_db.config import ExperimenterConfig
-from py_experimenter_db.db.connection import get_conn
+from py_experimenter_db.db.connection import DbBackend, get_conn
 
 # Minimum columns expected on the main table (exception column is detected at runtime)
 STANDARD_COLUMNS = ["ID", "status", "machine", "creation_date", "start_date", "end_date"]
@@ -37,20 +37,28 @@ class SchemaInfo:
     all_columns: list[str] = field(default_factory=list)  # all cols for allowlist
 
 
-async def build_schema_info(cfg: ExperimenterConfig, pool: aiomysql.Pool) -> SchemaInfo:
+async def build_schema_info(cfg: ExperimenterConfig, db: DbBackend) -> SchemaInfo:
     """Introspect the live DB and combine with config to build SchemaInfo."""
     table = cfg.table.name
 
     # Discover which tables actually exist and the real column names on the main table
-    async with get_conn(pool) as conn:
-        async with conn.cursor(aiomysql.DictCursor) as cur:
-            await cur.execute("SHOW TABLES")
-            existing_tables = {list(row.values())[0] for row in await cur.fetchall()}
-
-            actual_columns: set[str] = set()
-            if table in existing_tables:
-                await cur.execute(f"SHOW COLUMNS FROM `{table}`")
-                actual_columns = {row["Field"] for row in await cur.fetchall()}
+    async with get_conn(db) as conn:
+        if db.is_sqlite:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                existing_tables = {row["name"] for row in await cur.fetchall()}
+                actual_columns: set[str] = set()
+                if table in existing_tables:
+                    await cur.execute(f"PRAGMA table_info(`{table}`)")
+                    actual_columns = {row["name"] for row in await cur.fetchall()}
+        else:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute("SHOW TABLES")
+                existing_tables = {list(row.values())[0] for row in await cur.fetchall()}
+                actual_columns = set()
+                if table in existing_tables:
+                    await cur.execute(f"SHOW COLUMNS FROM `{table}`")
+                    actual_columns = {row["Field"] for row in await cur.fetchall()}
 
     # Detect exception column — name varies across PyExperimenter versions
     exception_column: str | None = next(

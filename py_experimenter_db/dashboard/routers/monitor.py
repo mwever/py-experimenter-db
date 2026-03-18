@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from py_experimenter_db.dashboard.app import get_state, get_templates
 from py_experimenter_db.db.queries import get_monitor_stats, get_workers
@@ -24,11 +24,14 @@ def _read_yaml_file(path: str) -> str | None:
 
 
 @router.get("/", response_class=HTMLResponse)
-async def monitor_page(request: Request) -> HTMLResponse:
+async def monitor_page(request: Request):
     state = get_state(request)
+    if not state.is_active:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse("/projects", status_code=302)
     templates = get_templates(request)
-    stats = await get_monitor_stats(state.pool, state.schema)
-    workers = await get_workers(state.pool, state.schema)
+    stats = await get_monitor_stats(state.db, state.schema)
+    workers = await get_workers(state.db, state.schema)
     return templates.TemplateResponse(
         request=request,
         name="monitor.html",
@@ -47,7 +50,7 @@ async def monitor_page(request: Request) -> HTMLResponse:
 async def stats_fragment(request: Request) -> HTMLResponse:
     state = get_state(request)
     templates = get_templates(request)
-    stats = await get_monitor_stats(state.pool, state.schema)
+    stats = await get_monitor_stats(state.db, state.schema)
     return templates.TemplateResponse(
         request=request,
         name="partials/stats_bar.html",
@@ -59,7 +62,7 @@ async def stats_fragment(request: Request) -> HTMLResponse:
 async def workers_fragment(request: Request) -> HTMLResponse:
     state = get_state(request)
     templates = get_templates(request)
-    workers = await get_workers(state.pool, state.schema)
+    workers = await get_workers(state.db, state.schema)
     return templates.TemplateResponse(
         request=request,
         name="partials/worker_list.html",

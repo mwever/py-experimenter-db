@@ -17,8 +17,7 @@
     font-size: 12.5px;
     line-height: 1.55;
     border-radius: 0.375rem;
-    height: auto;
-    max-height: 480px;
+    height: 480px;
   }
   .CodeMirror-foldgutter { width: 1.2em; }
   .CodeMirror-foldmarker {
@@ -29,7 +28,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto">
+<div>
 
   <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold">Experiment Monitor</h1>
@@ -42,64 +41,72 @@
   <!-- Stats bar (HTMX polled) -->
   {% include "partials/stats_bar.html" %}
 
-  <!-- Workers section -->
-  <div class="card bg-base-200 shadow mt-6">
-    <div class="card-body p-4">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="card-title text-base">Active Workers</h2>
-        <span class="loading loading-ring loading-xs text-info"></span>
-      </div>
-      {% include "partials/worker_list.html" %}
-    </div>
-  </div>
+  <!-- Workers + Config row -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
 
-  <!-- Config YAML viewer -->
-  {% if config_yaml or db_config_yaml %}
-  <div class="card bg-base-200 shadow mt-6" x-data="{tab: 'config'}">
-    <div class="card-body p-4">
-
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="card-title text-base">Configuration</h2>
-        <!-- Tab switcher -->
-        <div class="tabs tabs-boxed bg-base-300 p-0.5 text-xs">
-          {% if config_yaml %}
-          <button type="button"
-                  class="tab tab-sm"
-                  :class="tab === 'config' ? 'tab-active' : ''"
-                  @click="tab = 'config'">
-            config.yml
-          </button>
-          {% endif %}
-          {% if db_config_yaml %}
-          <button type="button"
-                  class="tab tab-sm"
-                  :class="tab === 'db_config' ? 'tab-active' : ''"
-                  @click="tab = 'db_config'">
-            db_config.yml
-          </button>
-          {% endif %}
+    <!-- Workers section -->
+    <div class="card bg-base-200 shadow">
+      <div class="card-body p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="card-title text-base">Active Workers</h2>
+          <span class="loading loading-ring loading-xs text-info"></span>
         </div>
+        {% include "partials/worker_list.html" %}
       </div>
-
-      {% if config_yaml %}
-      <div x-show="tab === 'config'">
-        <div class="text-xs text-base-content/30 font-mono mb-1 truncate"
-             title="{{ config_path }}">{{ config_path }}</div>
-        <div class="yaml-editor" id="cm-config"></div>
-      </div>
-      {% endif %}
-
-      {% if db_config_yaml %}
-      <div x-show="tab === 'db_config'">
-        <div class="text-xs text-base-content/30 font-mono mb-1 truncate"
-             title="{{ db_config_path }}">{{ db_config_path }}</div>
-        <div class="yaml-editor" id="cm-db-config"></div>
-      </div>
-      {% endif %}
-
     </div>
+
+    <!-- Config YAML viewer -->
+    {% if config_yaml or db_config_yaml %}
+    <div class="card bg-base-200 shadow" x-data="{tab: 'config'}">
+      <div class="card-body p-4">
+
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="card-title text-base">Configuration</h2>
+          <!-- Tab switcher -->
+          <div class="tabs tabs-boxed bg-base-300 p-0.5 text-xs">
+            {% if config_yaml %}
+            <button type="button"
+                    class="tab tab-sm"
+                    :class="tab === 'config' ? 'tab-active' : ''"
+                    @click="tab = 'config'">
+              config.yml
+            </button>
+            {% endif %}
+            {% if db_config_yaml %}
+            <button type="button"
+                    class="tab tab-sm"
+                    :class="tab === 'db_config' ? 'tab-active' : ''"
+                    @click="tab = 'db_config'">
+              db_config.yml
+            </button>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if config_yaml %}
+        <div x-show="tab === 'config'">
+          <div class="text-xs text-base-content/30 font-mono mb-1 truncate"
+               title="{{ config_path }}">{{ config_path }}</div>
+          <div class="yaml-editor" id="cm-config"></div>
+        </div>
+        {% endif %}
+
+        {% if db_config_yaml %}
+        <div x-show="tab === 'db_config'">
+          <div class="text-xs text-base-content/30 font-mono mb-1 truncate"
+               title="{{ db_config_path }}">{{ db_config_path }}</div>
+          <div class="yaml-editor" id="cm-db-config"></div>
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+    {% else %}
+    <!-- Placeholder so workers card doesn't stretch full-width when no config loaded -->
+    <div></div>
+    {% endif %}
+
   </div>
-  {% endif %}
 
 </div>
 {% endblock %}
@@ -122,7 +129,6 @@
       theme: 'dracula',
       lineNumbers: true,
       readOnly: true,
-      viewportMargin: Infinity,
     }, foldOpts));
   }
 

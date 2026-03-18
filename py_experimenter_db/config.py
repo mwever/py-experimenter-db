@@ -28,6 +28,8 @@ class TableConfig:
 class ExperimenterConfig:
     database: str
     table: TableConfig
+    provider: str = "mysql"          # "mysql" or "sqlite"
+    sqlite_path: str | None = None   # absolute path to .db file (sqlite only)
 
 
 @dataclass
@@ -39,8 +41,12 @@ class CredentialsConfig:
     database: str  # injected from ExperimenterConfig
 
 
-def load_config(config_path: str | Path, db_config_path: str | Path) -> tuple[ExperimenterConfig, CredentialsConfig]:
+def load_config(
+    config_path: str | Path,
+    db_config_path: str | Path | None = None,
+) -> tuple[ExperimenterConfig, CredentialsConfig | None]:
     """Parse both YAML config files and return validated config objects."""
+    config_path = Path(config_path)
     with open(config_path) as f:
         raw = yaml.safe_load(f)
 
@@ -72,9 +78,10 @@ def load_config(config_path: str | Path, db_config_path: str | Path) -> tuple[Ex
             else:
                 resultfields[str(item)] = "TEXT"
 
-    # Parse logtables
+    # Parse logtables — can live under Database.table or directly under Database
     logtables: dict[str, dict[str, str]] = {}
-    for lt_name, lt_fields in table_section.get("logtables", {}).items():
+    raw_lt = table_section.get("logtables") or db_section.get("logtables") or {}
+    for lt_name, lt_fields in raw_lt.items():
         if isinstance(lt_fields, dict):
             logtables[lt_name] = {k: str(v) for k, v in lt_fields.items()}
         else:
@@ -89,7 +96,19 @@ def load_config(config_path: str | Path, db_config_path: str | Path) -> tuple[Ex
     )
 
     database_name = db_section.get("database", "")
-    exp_cfg = ExperimenterConfig(database=database_name, table=table_cfg)
+    provider = db_section.get("provider", "mysql").lower()
+
+    exp_cfg = ExperimenterConfig(database=database_name, table=table_cfg, provider=provider)
+
+    if provider == "sqlite":
+        raw_path = db_section.get("database", db_section.get("path", ""))
+        resolved_path = (config_path.parent / raw_path).resolve()
+        exp_cfg.sqlite_path = str(resolved_path)
+        return exp_cfg, None
+
+    # MySQL path — db_config_path required
+    if db_config_path is None:
+        raise ValueError("db_config_path is required for MySQL provider")
 
     # Parse db_config
     with open(db_config_path) as f:

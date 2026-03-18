@@ -5,7 +5,7 @@
 [![codecov](https://codecov.io/gh/mwever/py-experimenter-dashboard/branch/main/graph/badge.svg)](https://codecov.io/gh/mwever/py-experimenter-dashboard)
 [![License](https://img.shields.io/github/license/mwever/py-experimenter-dashboard)](https://img.shields.io/github/license/mwever/py-experimenter-dashboard)
 
-A web-based dashboard for monitoring, managing, and post-processing experiments run with [PyExperimenter](https://github.com/tornede/py_experimenter). Connect it to your existing PyExperimenter MySQL database and get a live cockpit for your experiment runs — no additional infrastructure required.
+A web-based dashboard for monitoring, managing, and post-processing experiments run with [PyExperimenter](https://github.com/tornede/py_experimenter). Supports both **MySQL** and **SQLite** backends. Connect it to your existing PyExperimenter database and get a live cockpit for your experiment runs — no additional infrastructure required.
 
 - **Github repository**: <https://github.com/mwever/py-experimenter-dashboard/>
 - **Documentation**: <https://mwever.github.io/py-experimenter-dashboard/>
@@ -16,24 +16,25 @@ A web-based dashboard for monitoring, managing, and post-processing experiments 
 
 | Section | Description |
 |---|---|
-| **Monitor** | Live stats (total / done / running / pending / failed), progress bar, average runtime and ETA — auto-refreshed every 5 s. Active workers listed with job count and runtime. Config YAML files rendered with syntax highlighting and collapsible subtrees. |
+| **Monitor** | Live stats (total / done / running / pending / failed), progress bar, average runtime and ETA — auto-refreshed. Active workers and config YAML files (with syntax highlighting and collapsible subtrees) shown side by side. |
 | **Experiments** | Searchable, filterable, sortable, paginated table of all experiments. Filter by status, keyfields, or free text. Toggle visible columns. Click any row to open the full detail view. |
 | **Experiment Detail** | Full view of a single experiment — key parameters, result fields, timing, worker. Log table entries rendered as interactive Plotly charts (one chart per log table). |
-| **Failure Analysis** | Failed experiments grouped by the last line of their stack trace. Expand groups to inspect individual traces (lazy-loaded). Reset individual experiments or entire groups with one click, optionally clearing log table data. |
-| **Reset Experiments** | Dedicated reset workflow: filter by status and keyfield values (exact, multi-value list, numeric range, comparison, wildcard), preview matching experiments in a checkboxed table, untick individual rows, choose whether to delete associated log table and/or CodeCarbon data, then confirm. |
-| **SQL Query Tool** | CodeMirror-powered SQL editor with syntax highlighting, auto-complete for table and column names, and Ctrl+Enter to run. Query history persisted locally (SQLite). Save and reload named queries. |
-| **Chat** | LLM-powered assistant (Claude) with persistent sessions, per-session memory, and a built-in Python script editor. Scripts can call `query(sql)` to read from the experiment database and produce Pandas DataFrames. Output (stdout, stderr, plots) shown inline with collapsible sections. Cross-project knowledge stored as global memory. |
+| **Failure Analysis** | Failed experiments grouped by the last line of their stack trace. Expand groups to inspect sample tracebacks. |
+| **Reset Experiments** | Filter by status and keyfield values (exact, multi-value list, numeric range, comparison, wildcard), preview matching experiments in a checkboxed table, untick individual rows, choose whether to delete associated log table and/or CodeCarbon data, then confirm. |
+| **SQL Query Tool** | CodeMirror-powered SQL editor with syntax highlighting, auto-complete for table and column names, and Ctrl+Enter to run. Query history persisted locally. Save and reload named queries. |
+| **Chat** | LLM-powered assistant with persistent sessions, per-session memory, and a built-in Python script editor. Scripts can call `query(sql)` to read from the experiment database and produce Pandas DataFrames. Output (stdout, stderr, plots) shown inline. Cross-project knowledge stored as global memory. |
 | **Carbon Footprint** | If [CodeCarbon](https://mlco2.github.io/codecarbon/) is enabled, summarises total CO₂ emissions, energy consumption, and renders time-series and per-experiment breakdown charts. |
-| **Config** | Dashboard settings (LLM model, API key, refresh interval). |
-| **Projects** | Global registry of all past dashboard runs (stored in `~/.py_experimenter_dashboard/projects.db`). Switch between projects without restarting — hot-swaps the MySQL connection, schema, and workspace. Shared cross-project memory for the Chat assistant. |
+| **Projects** | Global registry of all past projects. Switch between projects without restarting. Upload config files directly in the browser to register new projects. Create new PyExperimenter configurations from scratch using a step-by-step wizard and download the generated YAML files. |
+| **Config** | Dashboard settings: live-update interval, default experiment table columns/sorting, and LLM backend (URL, model, API token). LLM defaults can be pre-set via environment variables. |
 
 ---
 
 ## Requirements
 
 - Python ≥ 3.10
-- A running MySQL server with an existing PyExperimenter database
-- The PyExperimenter `config.yml` and `db_config.yml` for that experiment
+- A PyExperimenter experiment database — either:
+  - **MySQL**: running server + `config.yml` + `db_config.yml`
+  - **SQLite**: local `.db` file + `config.yml` (no credentials file needed)
 
 ---
 
@@ -53,11 +54,43 @@ make install   # creates venv via uv and installs pre-commit hooks
 
 ---
 
-## Configuration
+## Configuration files
 
-The dashboard reads the same two YAML files that PyExperimenter uses.
+The dashboard reads the same YAML files that PyExperimenter uses.
 
-**`config.yml`** — experiment schema (table name, keyfields, result fields, log tables):
+### SQLite project
+
+Only `config.yml` is needed — set `provider: sqlite` and point `database` at the `.db` file (relative to the config file):
+
+```yaml
+PY_EXPERIMENTER:
+  Database:
+    provider: sqlite
+    database: experiments.db
+    table:
+      name: my_experiments
+      keyfields:
+        learning_rate:
+          type: FLOAT
+          values: [0.001, 0.01, 0.1]
+        seed:
+          type: INT
+          values: [0, 1, 2, 3, 4]
+      resultfields:
+        accuracy: FLOAT
+        loss:     FLOAT
+      logtables:
+        training_log:
+          epoch:      INT
+          train_loss: FLOAT
+          val_loss:   FLOAT
+```
+
+### MySQL project
+
+Both files are required.
+
+**`config.yml`:**
 
 ```yaml
 PY_EXPERIMENTER:
@@ -83,7 +116,7 @@ PY_EXPERIMENTER:
           val_loss:   FLOAT
 ```
 
-**`db_config.yml`** — database credentials:
+**`db_config.yml`:**
 
 ```yaml
 CREDENTIALS:
@@ -93,7 +126,7 @@ CREDENTIALS:
   Connection:
     Standard:
       server: 127.0.0.1
-      port: 3306          # optional, defaults to 3306
+      port: 3306
 ```
 
 ---
@@ -103,11 +136,16 @@ CREDENTIALS:
 ### Command line
 
 ```bash
+# MySQL — both files required
 py-experimenter-dashboard \
     --config path/to/config.yml \
-    --db-config path/to/db_config.yml \
-    --host 0.0.0.0 \
-    --port 8080
+    --db-config path/to/db_config.yml
+
+# SQLite — config only
+py-experimenter-dashboard --config path/to/config.yml
+
+# Project-picker mode — no config needed; select or upload a project in the browser
+py-experimenter-dashboard
 ```
 
 Then open `http://localhost:8080` in your browser.
@@ -116,11 +154,13 @@ Then open `http://localhost:8080` in your browser.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--config` | *(required)* | Path to PyExperimenter `config.yml` |
-| `--db-config` | *(required)* | Path to PyExperimenter `db_config.yml` |
+| `--config` | *(optional)* | Path to PyExperimenter `config.yml` |
+| `--db-config` | *(optional)* | Path to `db_config.yml` (MySQL only) |
 | `--host` | `0.0.0.0` | Bind address |
 | `--port` | `8080` | Port |
 | `--reload` | off | Enable auto-reload (development only) |
+
+When launched without `--config` the dashboard starts in **project-picker mode**: the Projects page is shown first so you can select a previously registered project or upload config files to connect a new one.
 
 ### Make targets (development)
 
@@ -133,20 +173,24 @@ make test       # run test suite
 make check      # lint, type-check, dependency audit
 ```
 
-### Shell script
+---
+
+## LLM backend environment variables
+
+The Chat assistant supports any OpenAI-compatible API. The three LLM settings can be pre-configured via environment variables so they do not need to be entered in the browser UI. Values saved via the Config page take precedence; clearing a saved value falls back to the environment variable.
+
+| Variable | Description | Example |
+|---|---|---|
+| `PY_EXP_LLM_URL` | API base URL | `https://api.openai.com/v1` |
+| `PY_EXP_LLM_MODEL` | Model name | `gpt-4o` |
+| `PY_EXP_LLM_TOKEN` | API token / bearer token | `sk-…` |
+
+Local inference servers also work (Ollama, LM Studio, vLLM, …):
 
 ```bash
-./scripts/dev.sh                               # uses example/ configs
-./scripts/dev.sh config.yml db_config.yml      # custom configs
-PORT=9090 ./scripts/dev.sh                     # custom port
-```
-
-### Module invocation (no install needed)
-
-```bash
-uv run python -m py_experimenter_db \
-    --config config.yml \
-    --db-config db_config.yml
+export PY_EXP_LLM_URL=http://localhost:11434/v1
+export PY_EXP_LLM_MODEL=llama3.2
+py-experimenter-dashboard --config config.yml
 ```
 
 ---
@@ -167,37 +211,58 @@ The Reset page accepts flexible filter expressions for keyfields:
 
 ## Chat — built-in Python scripting
 
-The Chat section provides an LLM assistant (Claude) that is aware of your experiment schema, keyfields, result fields, and recent query history.
+The Chat section provides an LLM assistant aware of your experiment schema, keyfields, result fields, and recent query history.
 
-In addition to natural-language conversation, you can write and run Python scripts directly in the browser. Scripts have access to a `query(sql)` helper that returns a Pandas DataFrame:
+Scripts have access to a `query(sql)` helper that returns a Pandas DataFrame:
 
 ```python
-df = query("SELECT learning_rate, AVG(accuracy) as acc FROM my_experiments WHERE status='done' GROUP BY learning_rate")
+df = query("""
+    SELECT learning_rate, AVG(accuracy) as acc
+    FROM my_experiments
+    WHERE status = 'done'
+    GROUP BY learning_rate
+""")
 print(df)
 ```
 
-Matplotlib figures produced by scripts are captured and displayed inline. stdout and stderr are shown in collapsible panels.
+Matplotlib figures are captured and displayed inline. stdout and stderr appear in collapsible panels. Sessions and history are stored persistently in the local workspace SQLite database.
 
-Sessions and their history are stored persistently in the local workspace SQLite database.
+---
+
+## Creating new configurations
+
+The **Projects** page includes a step-by-step configuration wizard (**New Config** button) for creating a fresh PyExperimenter setup without writing YAML by hand:
+
+1. **Provider** — choose SQLite or MySQL
+2. **Database** — file path (SQLite) or server credentials (MySQL)
+3. **Table & Fields** — table name, keyfields with types and values, resultfields, logtables with columns
+4. **Preview & Save** — review the generated YAML, download the files, and optionally save the project directly to the dashboard workspace to activate it immediately
+
+Existing projects can be edited via the **Edit** button on their project card, which pre-populates the wizard with the current configuration and lets you change any field including the database provider.
 
 ---
 
 ## Local persistence
 
-All workspace-local data (query history, saved queries, chat sessions, scripts, settings) is stored in a SQLite database inside the project directory:
+All workspace-local data (query history, saved queries, chat sessions, settings) is stored in a SQLite database:
 
 ```
+# For projects launched via CLI:
 .py_experimenter_dashboard/
+└── query_history.sqlite
+
+# For projects uploaded or created via the wizard:
+~/.py_experimenter_dashboard/workspaces/<table_name>/
+├── config.yml
+├── db_config.yml          # MySQL only
 └── query_history.sqlite
 ```
 
-This file is created automatically on first run and persists across restarts.
-
-A separate global registry tracks all projects that have ever been opened with the dashboard:
+A global registry tracks all projects ever opened with the dashboard:
 
 ```
 ~/.py_experimenter_dashboard/
-├── projects.db      # global project registry + cross-project Chat memory
+├── projects.db            # global project registry + cross-project Chat memory
 ```
 
 ---
@@ -206,11 +271,11 @@ A separate global registry tracks all projects that have ever been opened with t
 
 ```
 py_experimenter_db/
-├── config.py                  # YAML config parsers
+├── config.py                  # YAML config parsers (MySQL + SQLite)
 ├── cli.py                     # CLI entry point
 ├── __main__.py                # python -m py_experimenter_db support
 ├── db/
-│   ├── connection.py          # async MySQL connection pool (aiomysql)
+│   ├── connection.py          # DbBackend abstraction (aiomysql + aiosqlite)
 │   ├── schema.py              # live DB introspection + SchemaInfo
 │   └── queries.py             # all SQL query functions
 ├── history/
@@ -219,9 +284,9 @@ py_experimenter_db/
     ├── app.py                 # FastAPI application factory
     ├── state.py               # AppState dataclass
     ├── settings.py            # dashboard settings model
-    ├── project_registry.py    # global project registry (cross-project)
+    ├── project_registry.py    # global project registry
     ├── code_runner.py         # sandboxed Python script execution
-    ├── llm.py                 # Claude API client
+    ├── llm.py                 # LLM API client (OpenAI-compatible)
     ├── routers/               # one module per dashboard section
     │   ├── monitor.py
     │   ├── experiments.py
@@ -245,6 +310,7 @@ py_experimenter_db/
         ├── chat.html
         ├── carbon.html
         ├── config.html
+        ├── config_editor.html
         ├── projects.html
         └── partials/          # HTMX fragment templates
 ```
@@ -259,7 +325,7 @@ py_experimenter_db/
 | [Alpine.js](https://alpinejs.dev/) | Lightweight client-side state |
 | [Tailwind CSS](https://tailwindcss.com/) + [DaisyUI 4](https://daisyui.com/) | Styling |
 | [Plotly.js](https://plotly.com/javascript/) | Interactive charts (log tables, carbon) |
-| [CodeMirror 5](https://codemirror.net/5/) | SQL and YAML editors with syntax highlighting, folding, and autocomplete |
+| [CodeMirror 5](https://codemirror.net/5/) | SQL and YAML editors with syntax highlighting, folding, autocomplete |
 | [aiomysql](https://aiomysql.readthedocs.io/) | Async MySQL driver |
 | [aiosqlite](https://aiosqlite.omnilib.dev/) | Async SQLite (local persistence) |
 

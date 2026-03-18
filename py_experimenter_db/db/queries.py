@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import math
 import re
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
 import aiomysql
 
-from py_experimenter_db.db.connection import get_conn
+from py_experimenter_db.db.connection import DbBackend, get_conn
 from py_experimenter_db.db.schema import SchemaInfo, is_safe_identifier
 
 
@@ -29,9 +30,16 @@ class MonitorStats:
     active_worker_count: int
 
 
-async def get_monitor_stats(pool: aiomysql.Pool, schema: SchemaInfo) -> MonitorStats:
+async def get_monitor_stats(db: DbBackend, schema: SchemaInfo) -> MonitorStats:
     t = schema.table_name
-    async with get_conn(pool) as conn:
+    if db.is_sqlite:
+        runtime_expr = """AVG(CASE WHEN status = 'done' AND start_date IS NOT NULL AND end_date IS NOT NULL
+                             THEN CAST((julianday(end_date) - julianday(start_date)) * 86400 AS INTEGER) END)"""
+    else:
+        runtime_expr = """AVG(CASE WHEN status = 'done' AND start_date IS NOT NULL AND end_date IS NOT NULL
+                             THEN TIMESTAMPDIFF(SECOND, start_date, end_date) END)"""
+
+    async with get_conn(db) as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute(f"""
                 SELECT
@@ -40,8 +48,7 @@ async def get_monitor_stats(pool: aiomysql.Pool, schema: SchemaInfo) -> MonitorS
                     SUM(status = 'running') AS running,
                     SUM(status = 'error') AS error,
                     SUM(status = 'created') AS pending,
-                    AVG(CASE WHEN status = 'done' AND start_date IS NOT NULL AND end_date IS NOT NULL
-                             THEN TIMESTAMPDIFF(SECOND, start_date, end_date) END) AS avg_runtime_seconds
+                    {runtime_expr} AS avg_runtime_seconds
                 FROM `{t}`
             """)
             row = await cur.fetchone()
@@ -73,9 +80,9 @@ async def get_monitor_stats(pool: aiomysql.Pool, schema: SchemaInfo) -> MonitorS
     )
 
 
-async def get_workers(pool: aiomysql.Pool, schema: SchemaInfo) -> list[dict[str, Any]]:
+async def get_workers(db: DbBackend, schema: SchemaInfo) -> list[dict[str, Any]]:
     t = schema.table_name
-    async with get_conn(pool) as conn:
+    async with get_conn(db) as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute(f"""
                 SELECT machine, COUNT(*) AS job_count, MIN(start_date) AS oldest_start
@@ -105,6 +112,7 @@ def _build_where(
     status_filter: list[str] | None,
     keyfield_filters: dict[str, str],
     schema: SchemaInfo,
+    is_sqlite: bool = False,
 ) -> tuple[str, list[Any]]:
     clauses: list[str] = []
     params: list[Any] = []
@@ -121,7 +129,8 @@ def _build_where(
 
     if search:
         like_cols = ["ID", "machine"] + schema.keyfields
-        like_clauses = [f"CAST(`{c}` AS CHAR) LIKE %s" for c in like_cols]
+        cast_type = "TEXT" if is_sqlite else "CHAR"
+        like_clauses = [f"CAST(`{c}` AS {cast_type}) LIKE %s" for c in like_cols]
         clauses.append(f"({' OR '.join(like_clauses)})")
         params.extend([f"%{search}%"] * len(like_cols))
 
@@ -130,7 +139,7 @@ def _build_where(
 
 
 async def get_experiments_page(
-    pool: aiomysql.Pool,
+    db: DbBackend,
     schema: SchemaInfo,
     columns: list[str],
     page: int = 1,
@@ -153,10 +162,10 @@ async def get_experiments_page(
         sort_col = "ID"
     sort_dir = "ASC" if sort_dir.upper() == "ASC" else "DESC"
 
-    where, params = _build_where(search, status_filter, keyfield_filters or {}, schema)
+    where, params = _build_where(search, status_filter, keyfield_filters or {}, schema, is_sqlite=db.is_sqlite)
     offset = (page - 1) * page_size
 
-    async with get_conn(pool) as conn:
+    async with get_conn(db) as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute(f"SELECT COUNT(*) AS cnt FROM `{t}` {where}", params)
             total = int((await cur.fetchone())["cnt"])
@@ -174,20 +183,20 @@ async def get_experiments_page(
 
 
 async def get_experiment_detail(
-    pool: aiomysql.Pool, schema: SchemaInfo, experiment_id: int
+    db: DbBackend, schema: SchemaInfo, experiment_id: int
 ) -> dict[str, Any] | None:
     t = schema.table_name
-    async with get_conn(pool) as conn:
+    async with get_conn(db) as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute(f"SELECT * FROM `{t}` WHERE ID = %s", (experiment_id,))
             return await cur.fetchone()
 
 
 async def get_logtable_rows(
-    pool: aiomysql.Pool, schema: SchemaInfo, experiment_id: int, logtable_name: str
+    db: DbBackend, schema: SchemaInfo, experiment_id: int, logtable_name: str
 ) -> list[dict[str, Any]]:
     db_name = f"{schema.table_name}__{logtable_name}"
-    async with get_conn(pool) as conn:
+    async with get_conn(db) as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute(
                 f"SELECT * FROM `{db_name}` WHERE experiment_id = %s ORDER BY ID ASC",
@@ -197,17 +206,20 @@ async def get_logtable_rows(
 
 
 async def get_keyfield_distinct_values(
-    pool: aiomysql.Pool, schema: SchemaInfo
+    db: DbBackend, schema: SchemaInfo
 ) -> dict[str, list[Any]]:
     """Get distinct values for each keyfield for filter dropdowns."""
     t = schema.table_name
     result: dict[str, list[Any]] = {}
-    async with get_conn(pool) as conn:
+    async with get_conn(db) as conn:
         async with conn.cursor() as cur:
             for kf in schema.keyfields:
                 await cur.execute(f"SELECT DISTINCT `{kf}` FROM `{t}` ORDER BY `{kf}`")
                 rows = await cur.fetchall()
-                result[kf] = [r[0] for r in rows]
+                if db.is_sqlite:
+                    result[kf] = [r[kf] for r in rows]
+                else:
+                    result[kf] = [r[0] for r in rows]
     return result
 
 
@@ -223,12 +235,42 @@ class FailureGroup:
     sample_exception: str
 
 
-async def get_failure_groups(pool: aiomysql.Pool, schema: SchemaInfo) -> list[FailureGroup]:
+async def get_failure_groups(db: DbBackend, schema: SchemaInfo) -> list[FailureGroup]:
     t = schema.table_name
     exc = schema.exception_column
     if not exc:
         return []
-    async with get_conn(pool) as conn:
+
+    if db.is_sqlite:
+        async with get_conn(db) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    f"SELECT ID, `{exc}` AS exc FROM `{t}` WHERE status = 'error' AND `{exc}` IS NOT NULL AND `{exc}` != ''"
+                )
+                rows = await cur.fetchall()
+
+        groups_map: dict[str, list[int]] = defaultdict(list)
+        sample_map: dict[str, str] = {}
+        for row in rows:
+            raw = str(row["exc"] or "").rstrip("\r\n")
+            last_line = raw.rsplit("\n", 1)[-1].strip() if "\n" in raw else raw.strip()
+            key = last_line or "(no message)"
+            groups_map[key].append(int(row["ID"]))
+            if key not in sample_map:
+                sample_map[key] = str(row["exc"] or "")
+
+        result = []
+        for key, ids in sorted(groups_map.items(), key=lambda x: -len(x[1])):
+            result.append(FailureGroup(
+                error_type=key,
+                count=len(ids),
+                experiment_ids=sorted(ids),
+                sample_exception=sample_map.get(key, ""),
+            ))
+        return result
+
+    # MySQL path
+    async with get_conn(db) as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute(f"""
                 SELECT
@@ -244,10 +286,10 @@ async def get_failure_groups(pool: aiomysql.Pool, schema: SchemaInfo) -> list[Fa
                 GROUP BY error_type
                 ORDER BY cnt DESC
             """)
-            rows = await cur.fetchall()
+            mysql_rows = await cur.fetchall()
 
     groups: list[FailureGroup] = []
-    for row in rows:
+    for row in mysql_rows:
         ids = [int(i) for i in str(row["ids"]).split(",") if i]
         groups.append(FailureGroup(
             error_type=row["error_type"] or "(no message)",
@@ -259,21 +301,23 @@ async def get_failure_groups(pool: aiomysql.Pool, schema: SchemaInfo) -> list[Fa
 
 
 async def get_experiment_exception(
-    pool: aiomysql.Pool, schema: SchemaInfo, experiment_id: int
+    db: DbBackend, schema: SchemaInfo, experiment_id: int
 ) -> str | None:
     t = schema.table_name
     exc = schema.exception_column
     if not exc:
         return None
-    async with get_conn(pool) as conn:
+    async with get_conn(db) as conn:
         async with conn.cursor() as cur:
             await cur.execute(f"SELECT `{exc}` FROM `{t}` WHERE ID = %s", (experiment_id,))
             row = await cur.fetchone()
-            return row[0] if row else None
+            if row is None:
+                return None
+            return row[exc] if db.is_sqlite else row[0]
 
 
 async def rerun_experiments(
-    pool: aiomysql.Pool,
+    db: DbBackend,
     schema: SchemaInfo,
     experiment_ids: list[int],
     delete_logtable_data: bool = False,
@@ -292,7 +336,7 @@ async def rerun_experiments(
     if result_clears:
         set_clause = f"{set_clause}, {result_clears}"
 
-    async with get_conn(pool) as conn:
+    async with get_conn(db) as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 f"UPDATE `{t}` SET {set_clause} WHERE ID IN ({placeholders})",
@@ -370,7 +414,7 @@ def _parse_keyfield_filter(col: str, raw: str) -> tuple[str, list[Any]] | None:
 
 
 async def search_experiments_for_reset(
-    pool: aiomysql.Pool,
+    db: DbBackend,
     schema: SchemaInfo,
     statuses: list[str],
     keyfield_filters: dict[str, str],   # name -> expression (empty = no filter)
@@ -402,7 +446,7 @@ async def search_experiments_for_reset(
     if kf_select:
         kf_select = ", " + kf_select
 
-    async with get_conn(pool) as conn:
+    async with get_conn(db) as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute(
                 f"SELECT ID, status, creation_date{kf_select} FROM `{t}` {where} ORDER BY ID LIMIT %s",
@@ -442,7 +486,7 @@ class TableSchema:
     columns: list[ColumnInfo]
 
 
-async def get_db_schema(pool: aiomysql.Pool, schema: SchemaInfo) -> list[TableSchema]:
+async def get_db_schema(db: DbBackend, schema: SchemaInfo) -> list[TableSchema]:
     """Return column-level schema for all dashboard-relevant tables.
 
     Discovers logtables directly from the DB (tables whose name starts with
@@ -452,14 +496,49 @@ async def get_db_schema(pool: aiomysql.Pool, schema: SchemaInfo) -> list[TableSc
     lt_prefix = f"{t}__"
     cc_table = f"{t}_codecarbon"
 
-    async with get_conn(pool) as conn:
+    if db.is_sqlite:
+        async with get_conn(db) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                existing: set[str] = {row["name"] for row in await cur.fetchall()}
+
+                # Build ordered list: main → logtables (sorted) → codecarbon
+                tables_to_fetch: list[tuple[str, str]] = [(t, "Main table")]
+                for db_table in sorted(existing):
+                    if db_table.startswith(lt_prefix):
+                        lt_name = db_table[len(lt_prefix):]
+                        tables_to_fetch.append((db_table, f"Logtable: {lt_name}"))
+                if cc_table in existing:
+                    tables_to_fetch.append((cc_table, "CodeCarbon"))
+
+                result: list[TableSchema] = []
+                for db_table, label in tables_to_fetch:
+                    if db_table not in existing:
+                        continue
+                    await cur.execute(f"PRAGMA table_info(`{db_table}`)")
+                    rows = await cur.fetchall()
+                    columns = [
+                        ColumnInfo(
+                            name=row["name"],
+                            col_type=row["type"],
+                            nullable=not row["notnull"],
+                            key="PRI" if row["pk"] else "",
+                            default=row["dflt_value"],
+                        )
+                        for row in rows
+                    ]
+                    result.append(TableSchema(table_name=db_table, label=label, columns=columns))
+        return result
+
+    # MySQL path
+    async with get_conn(db) as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             # Discover all existing tables in the DB
             await cur.execute("SHOW TABLES")
-            existing: set[str] = {list(row.values())[0] for row in await cur.fetchall()}
+            existing = {list(row.values())[0] for row in await cur.fetchall()}
 
             # Build ordered list: main → logtables (sorted) → codecarbon
-            tables_to_fetch: list[tuple[str, str]] = [(t, "Main table")]
+            tables_to_fetch = [(t, "Main table")]
             for db_table in sorted(existing):
                 if db_table.startswith(lt_prefix):
                     lt_name = db_table[len(lt_prefix):]
@@ -467,7 +546,7 @@ async def get_db_schema(pool: aiomysql.Pool, schema: SchemaInfo) -> list[TableSc
             if cc_table in existing:
                 tables_to_fetch.append((cc_table, "CodeCarbon"))
 
-            result: list[TableSchema] = []
+            result = []
             for db_table, label in tables_to_fetch:
                 if db_table not in existing:
                     continue
@@ -521,22 +600,28 @@ def validate_select_query(sql: str) -> str | None:
     return None
 
 
-async def execute_query(pool: aiomysql.Pool, sql: str) -> QueryResult:
+async def execute_query(db: DbBackend, sql: str) -> QueryResult:
     err = validate_select_query(sql)
     if err:
         return QueryResult(columns=[], rows=[], row_count=0, truncated=False, error=err)
 
     try:
-        async with get_conn(pool) as conn:
+        async with get_conn(db) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(sql)
-                rows = await cur.fetchmany(_MAX_ROWS + 1)
+                raw_rows = await cur.fetchmany(_MAX_ROWS + 1)
                 columns = [d[0] for d in cur.description] if cur.description else []
+
+        # Normalise to plain tuples (SQLite returns dicts, MySQL returns tuples)
+        if raw_rows and isinstance(raw_rows[0], dict):
+            rows: list[tuple] = [tuple(r[c] for c in columns) for r in raw_rows]
+        else:
+            rows = list(raw_rows)
 
         truncated = len(rows) > _MAX_ROWS
         return QueryResult(
             columns=columns,
-            rows=list(rows[:_MAX_ROWS]),
+            rows=rows[:_MAX_ROWS],
             row_count=len(rows[:_MAX_ROWS]),
             truncated=truncated,
         )
@@ -557,11 +642,11 @@ class CarbonSummary:
     n_experiments: int
 
 
-async def get_carbon_summary(pool: aiomysql.Pool, schema: SchemaInfo) -> CarbonSummary | None:
+async def get_carbon_summary(db: DbBackend, schema: SchemaInfo) -> CarbonSummary | None:
     if not schema.has_codecarbon:
         return None
     t = f"{schema.table_name}_codecarbon"
-    async with get_conn(pool) as conn:
+    async with get_conn(db) as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute(f"""
                 SELECT
@@ -584,11 +669,11 @@ async def get_carbon_summary(pool: aiomysql.Pool, schema: SchemaInfo) -> CarbonS
     )
 
 
-async def get_carbon_timeseries(pool: aiomysql.Pool, schema: SchemaInfo) -> list[dict[str, Any]]:
+async def get_carbon_timeseries(db: DbBackend, schema: SchemaInfo) -> list[dict[str, Any]]:
     if not schema.has_codecarbon:
         return []
     t = f"{schema.table_name}_codecarbon"
-    async with get_conn(pool) as conn:
+    async with get_conn(db) as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute(f"""
                 SELECT experiment_id, codecarbon_timestamp, emissions_kg,
@@ -602,7 +687,8 @@ async def get_carbon_timeseries(pool: aiomysql.Pool, schema: SchemaInfo) -> list
     result = []
     for row in rows:
         d = dict(row)
-        if d.get("codecarbon_timestamp") is not None:
-            d["codecarbon_timestamp"] = d["codecarbon_timestamp"].isoformat()
+        ts = d.get("codecarbon_timestamp")
+        if ts is not None and hasattr(ts, "isoformat"):
+            d["codecarbon_timestamp"] = ts.isoformat()
         result.append(d)
     return result

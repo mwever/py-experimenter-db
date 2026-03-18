@@ -3,14 +3,77 @@
 {% block title %}Projects – PyExperimenter Dashboard{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto">
+<div x-data="{connectOpen: {{ 'true' if not project_active else 'false' }}}">
+
   <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold">Projects</h1>
-    <p class="text-xs text-base-content/40">
-      All past dashboard runs are registered here automatically.
-    </p>
+    <div class="flex items-center gap-3">
+      {% if not project_active %}
+      <span class="badge badge-warning badge-sm">No active project</span>
+      {% endif %}
+      <button class="btn btn-outline btn-sm gap-2" @click="connectOpen = true">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+        </svg>
+        Connect
+      </button>
+      <a href="/projects/new" class="btn btn-outline btn-sm gap-2">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        New Config
+      </a>
+    </div>
   </div>
 
+  <!-- Connect modal -->
+  <div x-show="connectOpen" class="modal modal-open" @click.self="connectOpen = false" x-cloak>
+    <div class="modal-box">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-lg">Connect a project</h3>
+        <button class="btn btn-ghost btn-sm btn-circle" @click="connectOpen = false">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      {% if upload_error %}
+      <div class="alert alert-error text-sm mb-3 py-2">{{ upload_error }}</div>
+      {% endif %}
+
+      <p class="text-xs text-base-content/50 mb-4">
+        Upload your PyExperimenter <code class="font-mono">config.yml</code> and
+        <code class="font-mono">db_config.yml</code>. The files will be stored in
+        <code class="font-mono">~/.py_experimenter_dashboard/workspaces/&lt;table&gt;/</code>
+        and the project will be activated immediately.
+      </p>
+
+      <form action="/projects/upload" method="post" enctype="multipart/form-data"
+            class="space-y-3">
+        <div>
+          <label class="text-xs text-base-content/50 mb-1 block">config.yml</label>
+          <input type="file" name="config_file" accept=".yml,.yaml" required
+                 class="file-input file-input-bordered file-input-sm w-full">
+        </div>
+        <div>
+          <label class="text-xs text-base-content/50 mb-1 block">db_config.yml <span class="opacity-50">(MySQL only)</span></label>
+          <input type="file" name="db_config_file" accept=".yml,.yaml"
+                 class="file-input file-input-bordered file-input-sm w-full">
+        </div>
+        <div class="modal-action mt-4">
+          <button type="button" class="btn btn-ghost btn-sm" @click="connectOpen = false">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">
+            Upload &amp; Connect
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Project grid -->
   {% if not projects %}
   <div class="card bg-base-200 shadow">
     <div class="card-body py-12 text-center text-base-content/40">
@@ -18,46 +81,50 @@
     </div>
   </div>
   {% else %}
-  <div class="space-y-3">
+  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
     {% for p in projects %}
     <div class="card bg-base-200 shadow" id="project-card-{{ p.id }}">
       <div class="card-body p-4">
-        <div class="flex items-start justify-between gap-4">
 
-          <!-- Left: project info -->
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 mb-1">
-              <h2 class="font-bold text-base truncate">{{ p.name }}</h2>
-              {% if p.path == current_path %}
-              <span class="badge badge-primary badge-sm">current</span>
-              {% endif %}
-            </div>
-            <div class="text-xs text-base-content/50 font-mono truncate mb-2"
-                 title="{{ p.path }}">{{ p.path }}</div>
-            <div class="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-base-content/40">
-              <span><span class="text-base-content/25">host</span>
-                    {{ p.db_host }}:{{ p.db_port }}</span>
-              <span><span class="text-base-content/25">db</span>
-                    {{ p.db_database }}</span>
-              <span><span class="text-base-content/25">table</span>
-                    {{ p.db_table }}</span>
-              <span><span class="text-base-content/25">last seen</span>
-                    {{ p.last_seen[:16] if p.last_seen else '—' }}</span>
-            </div>
-          </div>
+        <!-- Name + badges -->
+        <div class="flex items-center gap-2 mb-1">
+          <h2 class="font-bold text-base truncate flex-1">{{ p.name }}</h2>
+          {% if p.path == current_path %}
+          <span class="badge badge-primary badge-sm shrink-0">current</span>
+          {% endif %}
+        </div>
 
-          <!-- Right: switch button -->
-          <div class="flex-shrink-0">
-            {% if p.path == current_path %}
-            <span class="btn btn-sm btn-disabled">Active</span>
-            {% else %}
-            <button class="btn btn-primary btn-sm"
-                    id="switch-btn-{{ p.id }}"
-                    onclick="switchProject({{ p.id }})">
-              Switch
-            </button>
-            {% endif %}
-          </div>
+        <!-- Path -->
+        <div class="text-xs text-base-content/50 font-mono truncate mb-3"
+             title="{{ p.path }}">{{ p.path }}</div>
+
+        <!-- Meta -->
+        <div class="grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs text-base-content/40 mb-4">
+          <span><span class="text-base-content/25">host</span> {{ p.db_host or '—' }}{% if p.db_port %}:{{ p.db_port }}{% endif %}</span>
+          <span><span class="text-base-content/25">db</span> {{ p.db_database or '—' }}</span>
+          <span><span class="text-base-content/25">table</span> {{ p.db_table }}</span>
+          <span><span class="text-base-content/25">seen</span> {{ p.last_seen[:16] if p.last_seen else '—' }}</span>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center gap-2">
+          <a href="/projects/{{ p.id }}/edit" class="btn btn-ghost btn-xs gap-1">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+            </svg>
+            Edit
+          </a>
+          <div class="flex-1"></div>
+          {% if p.path == current_path %}
+          <span class="btn btn-xs btn-disabled">Active</span>
+          {% else %}
+          <button class="btn btn-primary btn-xs"
+                  id="switch-btn-{{ p.id }}"
+                  onclick="switchProject({{ p.id }})">
+            Switch
+          </button>
+          {% endif %}
         </div>
 
         <!-- Switch feedback -->
@@ -67,6 +134,7 @@
     {% endfor %}
   </div>
   {% endif %}
+
 </div>
 {% endblock %}
 

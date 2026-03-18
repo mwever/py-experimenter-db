@@ -177,10 +177,14 @@
 
     <!-- Navigation -->
     <nav class="flex-1 p-3 space-y-0.5 mt-1">
+      {# Project-gated links are dimmed and unclickable when no project is active #}
+      {% set d = not project_active %}
 
-      <a href="/"
+      <a {% if not d %}href="/"{% endif %}
          class="btn btn-ghost btn-sm w-full justify-start gap-2
-                {% if request.url.path == '/' %}nav-active{% endif %}">
+                {% if not d and request.url.path == '/' %}nav-active{% endif %}
+                {% if d %}opacity-30 cursor-not-allowed pointer-events-none{% endif %}"
+         {% if d %}title="Activate a project first"{% endif %}>
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0
@@ -190,9 +194,11 @@
         Monitor
       </a>
 
-      <a href="/experiments"
+      <a {% if not d %}href="/experiments"{% endif %}
          class="btn btn-ghost btn-sm w-full justify-start gap-2
-                {% if request.url.path.startswith('/experiments') %}nav-active{% endif %}">
+                {% if not d and request.url.path.startswith('/experiments') %}nav-active{% endif %}
+                {% if d %}opacity-30 cursor-not-allowed pointer-events-none{% endif %}"
+         {% if d %}title="Activate a project first"{% endif %}>
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M3 10h18M3 14h18M10 3v18M14 3v18"/>
@@ -200,9 +206,11 @@
         Experiments
       </a>
 
-      <a href="/failures"
+      <a {% if not d %}href="/failures"{% endif %}
          class="btn btn-ghost btn-sm w-full justify-start gap-2
-                {% if request.url.path == '/failures' %}nav-active{% endif %}">
+                {% if not d and request.url.path == '/failures' %}nav-active{% endif %}
+                {% if d %}opacity-30 cursor-not-allowed pointer-events-none{% endif %}"
+         {% if d %}title="Activate a project first"{% endif %}>
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732
@@ -211,9 +219,11 @@
         Failures
       </a>
 
-      <a href="/reset"
+      <a {% if not d %}href="/reset"{% endif %}
          class="btn btn-ghost btn-sm w-full justify-start gap-2
-                {% if request.url.path == '/reset' %}nav-active{% endif %}">
+                {% if not d and request.url.path == '/reset' %}nav-active{% endif %}
+                {% if d %}opacity-30 cursor-not-allowed pointer-events-none{% endif %}"
+         {% if d %}title="Activate a project first"{% endif %}>
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0
@@ -222,9 +232,11 @@
         Reset
       </a>
 
-      <a href="/query"
+      <a {% if not d %}href="/query"{% endif %}
          class="btn btn-ghost btn-sm w-full justify-start gap-2
-                {% if request.url.path == '/query' %}nav-active{% endif %}">
+                {% if not d and request.url.path == '/query' %}nav-active{% endif %}
+                {% if d %}opacity-30 cursor-not-allowed pointer-events-none{% endif %}"
+         {% if d %}title="Activate a project first"{% endif %}>
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0
@@ -233,9 +245,11 @@
         Query Tool
       </a>
 
-      <a href="/chat"
+      <a {% if not d %}href="/chat"{% endif %}
          class="btn btn-ghost btn-sm w-full justify-start gap-2
-                {% if request.url.path == '/chat' %}nav-active{% endif %}">
+                {% if not d and request.url.path == '/chat' %}nav-active{% endif %}
+                {% if d %}opacity-30 cursor-not-allowed pointer-events-none{% endif %}"
+         {% if d %}title="Activate a project first"{% endif %}>
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14
@@ -246,12 +260,13 @@
 
       <a href="/projects"
          class="btn btn-ghost btn-sm w-full justify-start gap-2
-                {% if request.url.path == '/projects' %}nav-active{% endif %}">
+                {% if request.url.path.startswith('/projects') %}nav-active{% endif %}">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
         </svg>
         Projects
+        {% if d %}<span class="badge badge-warning badge-xs ml-auto">!</span>{% endif %}
       </a>
 
       <a href="/config"

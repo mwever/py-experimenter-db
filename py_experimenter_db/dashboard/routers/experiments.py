@@ -44,7 +44,7 @@ def _parse_columns(request: Request, schema_all_cols: list[str]) -> list[str]:
 async def experiments_page(request: Request) -> HTMLResponse:
     state = get_state(request)
     templates = get_templates(request)
-    kf_values = await get_keyfield_distinct_values(state.pool, state.schema)
+    kf_values = await get_keyfield_distinct_values(state.db, state.schema)
     selected_cols = _parse_columns(request, state.schema.all_columns)
     return templates.TemplateResponse(
         request=request,
@@ -68,7 +68,7 @@ async def experiments_table(request: Request) -> HTMLResponse:
     selected_cols = _parse_columns(request, state.schema.all_columns)
 
     page_obj = await get_experiments_page(
-        pool=state.pool,
+        db=state.db,
         schema=state.schema,
         columns=selected_cols,
         page=int(params.get("page", 1)),
@@ -103,14 +103,14 @@ async def experiment_detail(request: Request, experiment_id: int) -> HTMLRespons
     state = get_state(request)
     templates = get_templates(request)
 
-    experiment = await get_experiment_detail(state.pool, state.schema, experiment_id)
+    experiment = await get_experiment_detail(state.db, state.schema, experiment_id)
     if experiment is None:
         return HTMLResponse(content="Experiment not found", status_code=404)
 
     # Load logtable data for charts
     logtable_data: dict[str, list[dict[str, Any]]] = {}
     for lt_name in state.schema.logtable_names:
-        rows = await get_logtable_rows(state.pool, state.schema, experiment_id, lt_name)
+        rows = await get_logtable_rows(state.db, state.schema, experiment_id, lt_name)
         logtable_data[lt_name] = rows
 
     # Identify numeric columns per logtable for charting

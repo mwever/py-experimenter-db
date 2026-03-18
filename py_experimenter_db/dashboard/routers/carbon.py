@@ -23,8 +23,8 @@ async def carbon_page(request: Request) -> HTMLResponse:
             context={"summary": None, "timeseries": []},
         )
 
-    summary = await get_carbon_summary(state.pool, state.schema)
-    timeseries = await get_carbon_timeseries(state.pool, state.schema)
+    summary = await get_carbon_summary(state.db, state.schema)
+    timeseries = await get_carbon_timeseries(state.db, state.schema)
 
     return templates.TemplateResponse(
         request=request,

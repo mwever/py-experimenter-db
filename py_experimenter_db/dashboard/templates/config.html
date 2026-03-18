@@ -3,7 +3,7 @@
 {% block title %}Configuration – PyExperimenter Dashboard{% endblock %}
 
 {% block content %}
-<div class="max-w-2xl mx-auto">
+<div>
 
   <h1 class="text-2xl font-bold mb-6">Configuration</h1>
 
@@ -126,7 +126,10 @@
           <div class="form-control">
             <label class="label" for="llm_url">
               <span class="label-text">API base URL</span>
-              <span class="label-text-alt text-base-content/40">required</span>
+              <span class="label-text-alt flex items-center gap-1.5">
+                <code class="font-mono text-xs text-base-content/40">${{ llm_env.url_var }}</code>
+                {% if llm_env.url %}<span class="badge badge-info badge-xs">env set</span>{% endif %}
+              </span>
             </label>
             <input id="llm_url" type="url" name="llm_url"
                    placeholder="https://api.openai.com/v1"
@@ -143,6 +146,10 @@
           <div class="form-control max-w-sm">
             <label class="label" for="llm_model">
               <span class="label-text">Model name</span>
+              <span class="label-text-alt flex items-center gap-1.5">
+                <code class="font-mono text-xs text-base-content/40">${{ llm_env.model_var }}</code>
+                {% if llm_env.model %}<span class="badge badge-info badge-xs">env set</span>{% endif %}
+              </span>
             </label>
             <input id="llm_model" type="text" name="llm_model"
                    placeholder="gpt-4o"
@@ -158,7 +165,10 @@
           <div class="form-control max-w-sm" x-data="{show: false}">
             <label class="label" for="llm_token">
               <span class="label-text">API token</span>
-              <span class="label-text-alt text-base-content/40">optional for local LLMs</span>
+              <span class="label-text-alt flex items-center gap-1.5">
+                <code class="font-mono text-xs text-base-content/40">${{ llm_env.token_var }}</code>
+                {% if llm_env.token %}<span class="badge badge-info badge-xs">env set</span>{% endif %}
+              </span>
             </label>
             <div class="flex gap-2">
               <input id="llm_token" :type="show ? 'text' : 'password'" name="llm_token"
@@ -178,6 +188,9 @@
                 </svg>
               </button>
             </div>
+            <label class="label">
+              <span class="label-text-alt text-base-content/40">Optional for local LLMs</span>
+            </label>
           </div>
 
         </div>

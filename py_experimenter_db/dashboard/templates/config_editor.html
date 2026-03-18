@@ -1,0 +1,663 @@
+{% extends "base.html" %}
+
+{% macro type_select(item) %}
+<div class="flex items-center gap-1 w-56">
+  <select class="select select-bordered select-xs font-mono flex-shrink-0"
+          :value="typeBase({{ item }}.type)"
+          @change="updateTypeBase({{ item }}, $event.target.value)">
+    <optgroup label="Integer">
+      <option value="INT">INT</option>
+      <option value="BIGINT">BIGINT</option>
+      <option value="SMALLINT">SMALLINT</option>
+      <option value="TINYINT">TINYINT</option>
+    </optgroup>
+    <optgroup label="Real">
+      <option value="FLOAT">FLOAT</option>
+      <option value="DOUBLE">DOUBLE</option>
+      <option value="REAL">REAL</option>
+      <option value="DECIMAL">DECIMAL</option>
+    </optgroup>
+    <optgroup label="Text">
+      <option value="TEXT">TEXT</option>
+      <option value="VARCHAR">VARCHAR</option>
+      <option value="CHAR">CHAR</option>
+    </optgroup>
+    <optgroup label="Other">
+      <option value="BOOLEAN">BOOLEAN</option>
+      <option value="DATE">DATE</option>
+      <option value="DATETIME">DATETIME</option>
+      <option value="TIMESTAMP">TIMESTAMP</option>
+      <option value="BLOB">BLOB</option>
+      <option value="JSON">JSON</option>
+    </optgroup>
+  </select>
+  <div class="flex items-center gap-0.5 flex-shrink-0"
+       :class="typeHasLen({{ item }}.type) || typeHasPrec({{ item }}.type) ? '' : 'invisible'">
+    <span class="text-xs text-base-content/30">(</span>
+    <template x-if="typeHasLen({{ item }}.type)">
+      <input type="number" min="1" max="65535"
+             class="input input-bordered input-xs w-14 font-mono text-center"
+             :value="typeArgs({{ item }}.type)"
+             @input="updateTypeLen({{ item }}, $event.target.value)">
+    </template>
+    <template x-if="typeHasPrec({{ item }}.type)">
+      <div class="flex items-center gap-0.5">
+        <input type="number" min="1" max="65"
+               class="input input-bordered input-xs w-10 font-mono text-center"
+               :value="typePrec({{ item }}.type)"
+               @input="updateTypePrec({{ item }}, $event.target.value, typeScale({{ item }}.type))">
+        <span class="text-xs text-base-content/30">,</span>
+        <input type="number" min="0" max="30"
+               class="input input-bordered input-xs w-10 font-mono text-center"
+               :value="typeScale({{ item }}.type)"
+               @input="updateTypePrec({{ item }}, typePrec({{ item }}.type), $event.target.value)">
+      </div>
+    </template>
+    <span class="text-xs text-base-content/30">)</span>
+  </div>
+</div>
+{% endmacro %}
+
+{% block title %}{% if edit_data %}Edit Config{% else %}New Config{% endif %} – PyExperimenter Dashboard{% endblock %}
+
+{% block content %}
+<div x-data="configEditorData({{ edit_data | tojson if edit_data else 'null' }})">
+
+  <!-- ── Page header ── -->
+  <div class="flex items-center gap-3 mb-6">
+    <a href="/projects" class="btn btn-ghost btn-sm btn-circle">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+      </svg>
+    </a>
+    <div>
+      <h1 class="text-2xl font-bold" x-text="project_id ? 'Edit Configuration' : 'New Configuration'"></h1>
+      <p class="text-xs text-base-content/40 mt-0.5" x-show="project_id">
+        Changes are saved to the workspace and activate the project immediately.
+      </p>
+    </div>
+  </div>
+
+  <!-- ── Step indicator ── -->
+  <ul class="steps steps-horizontal w-full mb-8 text-xs">
+    <li class="step" :class="step >= 1 ? 'step-primary' : ''">Provider</li>
+    <li class="step" :class="step >= 2 ? 'step-primary' : ''">Database</li>
+    <li class="step" :class="step >= 3 ? 'step-primary' : ''">Table &amp; Fields</li>
+    <li class="step" :class="step >= 4 ? 'step-primary' : ''">Preview &amp; Save</li>
+  </ul>
+
+  <!-- ════════════════════════════════════════════════════════
+       STEP 1 — Provider
+       ════════════════════════════════════════════════════════ -->
+  <div x-show="step === 1" x-cloak>
+    <div class="card bg-base-200 shadow">
+      <div class="card-body">
+        <h2 class="card-title text-base mb-4">Choose database provider</h2>
+
+        <div class="grid grid-cols-2 gap-4">
+          <label class="cursor-pointer">
+            <input type="radio" name="provider" value="sqlite" x-model="provider" class="sr-only">
+            <div class="border-2 rounded-xl p-5 transition-all"
+                 :class="provider === 'sqlite' ? 'border-primary bg-primary/10' : 'border-base-content/10 hover:border-primary/40'">
+              <div class="flex items-center gap-3 mb-2">
+                <div class="w-8 h-8 rounded-lg flex items-center justify-center"
+                     :class="provider === 'sqlite' ? 'bg-primary/20' : 'bg-base-content/10'">
+                  <svg class="w-4 h-4" :class="provider === 'sqlite' ? 'text-primary' : 'text-base-content/50'"
+                       fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+                  </svg>
+                </div>
+                <span class="font-bold" :class="provider === 'sqlite' ? 'text-primary' : ''">SQLite</span>
+              </div>
+              <p class="text-xs text-base-content/50 leading-relaxed">
+                Local file-based database. No server required — ideal for single-machine experiments.
+              </p>
+            </div>
+          </label>
+
+          <label class="cursor-pointer">
+            <input type="radio" name="provider" value="mysql" x-model="provider" class="sr-only">
+            <div class="border-2 rounded-xl p-5 transition-all"
+                 :class="provider === 'mysql' ? 'border-primary bg-primary/10' : 'border-base-content/10 hover:border-primary/40'">
+              <div class="flex items-center gap-3 mb-2">
+                <div class="w-8 h-8 rounded-lg flex items-center justify-center"
+                     :class="provider === 'mysql' ? 'bg-primary/20' : 'bg-base-content/10'">
+                  <svg class="w-4 h-4" :class="provider === 'mysql' ? 'text-primary' : 'text-base-content/50'"
+                       fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+                  </svg>
+                </div>
+                <span class="font-bold" :class="provider === 'mysql' ? 'text-primary' : ''">MySQL</span>
+              </div>
+              <p class="text-xs text-base-content/50 leading-relaxed">
+                Central server database. Supports multiple workers across machines via shared credentials.
+              </p>
+            </div>
+          </label>
+        </div>
+
+        <div class="flex justify-end mt-6">
+          <button class="btn btn-primary btn-sm" @click="step = 2">
+            Next
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       STEP 2 — Database config
+       ════════════════════════════════════════════════════════ -->
+  <div x-show="step === 2" x-cloak>
+    <div class="card bg-base-200 shadow">
+      <div class="card-body">
+
+        <template x-if="provider === 'sqlite'">
+          <div>
+            <h2 class="card-title text-base mb-1">SQLite database path</h2>
+            <p class="text-xs text-base-content/50 mb-4">
+              Path to the <code class="font-mono">.db</code> file, relative to your
+              <code class="font-mono">config.yml</code> location (e.g.&nbsp;<code class="font-mono">experiments.db</code>).
+            </p>
+            <label class="form-control w-full max-w-sm">
+              <div class="label pb-1"><span class="label-text text-xs">Database file path</span></div>
+              <input type="text" x-model="sqlite_path" placeholder="experiments.db"
+                     class="input input-bordered input-sm font-mono">
+            </label>
+          </div>
+        </template>
+
+        <template x-if="provider === 'mysql'">
+          <div>
+            <h2 class="card-title text-base mb-1">MySQL credentials</h2>
+            <p class="text-xs text-base-content/50 mb-4">
+              These will be saved to <code class="font-mono">db_config.yml</code>.
+              The password is stored in plain text — keep the file private.
+            </p>
+            <div class="grid grid-cols-2 gap-4">
+              <label class="form-control">
+                <div class="label pb-1"><span class="label-text text-xs">Server host <span class="text-error">*</span></span></div>
+                <input type="text" x-model="db_host" placeholder="localhost"
+                       class="input input-bordered input-sm font-mono">
+              </label>
+              <label class="form-control">
+                <div class="label pb-1"><span class="label-text text-xs">Port</span></div>
+                <input type="number" x-model.number="db_port" placeholder="3306"
+                       class="input input-bordered input-sm font-mono">
+              </label>
+              <label class="form-control">
+                <div class="label pb-1"><span class="label-text text-xs">Username <span class="text-error">*</span></span></div>
+                <input type="text" x-model="db_user" placeholder="root"
+                       class="input input-bordered input-sm font-mono" autocomplete="username">
+              </label>
+              <label class="form-control">
+                <div class="label pb-1"><span class="label-text text-xs">Password</span></div>
+                <input type="password" x-model="db_password"
+                       class="input input-bordered input-sm font-mono" autocomplete="current-password">
+              </label>
+              <label class="form-control col-span-2">
+                <div class="label pb-1"><span class="label-text text-xs">Database name <span class="text-error">*</span></span></div>
+                <input type="text" x-model="db_database" placeholder="my_experiments"
+                       class="input input-bordered input-sm font-mono">
+              </label>
+            </div>
+          </div>
+        </template>
+
+        <div class="flex justify-between mt-6">
+          <button class="btn btn-ghost btn-sm" @click="step = 1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Back
+          </button>
+          <button class="btn btn-primary btn-sm" :disabled="!canStep3()" @click="step = 3">
+            Next
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       STEP 3 — Table & Fields
+       ════════════════════════════════════════════════════════ -->
+  <div x-show="step === 3" x-cloak>
+    <div class="space-y-4">
+
+      <!-- Table name -->
+      <div class="card bg-base-200 shadow">
+        <div class="card-body py-4">
+          <h2 class="card-title text-sm mb-3">Table name</h2>
+          <input type="text" x-model="table_name" placeholder="my_experiments"
+                 class="input input-bordered input-sm w-full max-w-xs font-mono">
+          <p class="text-xs text-base-content/35 mt-1">
+            The workspace folder is named after this table. Changing it creates a new project entry.
+          </p>
+        </div>
+      </div>
+
+      <!-- Keyfields -->
+      <div class="card bg-base-200 shadow">
+        <div class="card-body py-4">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h2 class="card-title text-sm">Keyfields</h2>
+              <p class="text-xs text-base-content/40 mt-0.5">Parameters that define the experiment grid. At least one required.</p>
+            </div>
+            <button type="button" class="btn btn-outline btn-xs gap-1" @click="addKeyfield()">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              Add
+            </button>
+          </div>
+
+          <div class="space-y-2">
+            <template x-for="kf in keyfields" :key="kf.id">
+              <div class="flex gap-2 items-end flex-wrap">
+                <label class="form-control min-w-24 flex-1">
+                  <div class="label py-0 pb-1"><span class="label-text text-xs opacity-50">Name</span></div>
+                  <input type="text" x-model="kf.name" placeholder="learning_rate"
+                         class="input input-bordered input-xs w-full font-mono">
+                </label>
+                <div class="form-control flex-shrink-0">
+                  <div class="label py-0 pb-1"><span class="label-text text-xs opacity-50">Type</span></div>
+                  {{ type_select("kf") }}
+                </div>
+                <label class="form-control min-w-24 flex-1">
+                  <div class="label py-0 pb-1">
+                    <span class="label-text text-xs opacity-50">Values</span>
+                    <span class="label-text-alt text-xs opacity-30">comma-separated, optional</span>
+                  </div>
+                  <input type="text" x-model="kf.values" placeholder="0.001, 0.01, 0.1"
+                         class="input input-bordered input-xs w-full font-mono">
+                </label>
+                <button type="button" class="btn btn-ghost btn-xs text-error"
+                        @click="remKeyfield(kf.id)" :disabled="keyfields.length <= 1">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </button>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- Resultfields -->
+      <div class="card bg-base-200 shadow">
+        <div class="card-body py-4">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h2 class="card-title text-sm">Resultfields</h2>
+              <p class="text-xs text-base-content/40 mt-0.5">Columns written back by workers after completion.</p>
+            </div>
+            <button type="button" class="btn btn-outline btn-xs gap-1" @click="addResultfield()">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              Add
+            </button>
+          </div>
+          <div class="space-y-2">
+            <template x-for="rf in resultfields" :key="rf.id">
+              <div class="flex gap-2 items-end">
+                <label class="form-control flex-1">
+                  <div class="label py-0 pb-1"><span class="label-text text-xs opacity-50">Name</span></div>
+                  <input type="text" x-model="rf.name" placeholder="accuracy"
+                         class="input input-bordered input-xs w-full font-mono">
+                </label>
+                <div class="form-control flex-shrink-0">
+                  <div class="label py-0 pb-1"><span class="label-text text-xs opacity-50">Type</span></div>
+                  {{ type_select("rf") }}
+                </div>
+                <button type="button" class="btn btn-ghost btn-xs text-error"
+                        @click="remResultfield(rf.id)">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </button>
+              </div>
+            </template>
+            <p x-show="resultfields.length === 0" class="text-xs text-base-content/30 italic py-1">No resultfields — add one above.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Logtables -->
+      <div class="card bg-base-200 shadow">
+        <div class="card-body py-4">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h2 class="card-title text-sm">Logtables</h2>
+              <p class="text-xs text-base-content/40 mt-0.5">Optional per-experiment auxiliary tables for streaming metrics or logs.</p>
+            </div>
+            <button type="button" class="btn btn-outline btn-xs gap-1" @click="addLogtable()">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              Add logtable
+            </button>
+          </div>
+          <div class="space-y-4">
+            <template x-for="lt in logtables" :key="lt.id">
+              <div class="border border-base-content/10 rounded-lg p-3">
+                <div class="flex items-end gap-2 mb-3">
+                  <label class="form-control flex-1 max-w-xs">
+                    <div class="label py-0 pb-1"><span class="label-text text-xs opacity-50">Logtable name</span></div>
+                    <input type="text" x-model="lt.name" placeholder="metrics"
+                           class="input input-bordered input-xs font-mono">
+                  </label>
+                  <button type="button" class="btn btn-ghost btn-xs text-error gap-1"
+                          @click="remLogtable(lt.id)">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                    Remove
+                  </button>
+                </div>
+
+                <div class="pl-3 border-l-2 border-primary/20 space-y-2 mb-2">
+                  <p class="text-xs text-base-content/40 font-semibold uppercase tracking-wide">Columns</p>
+                  <template x-for="col in lt.columns" :key="col.id">
+                    <div class="flex gap-2 items-end">
+                      <label class="form-control flex-1">
+                        <div class="label py-0 pb-1"><span class="label-text text-xs opacity-50">Name</span></div>
+                        <input type="text" x-model="col.name" placeholder="step"
+                               class="input input-bordered input-xs font-mono">
+                      </label>
+                      <div class="form-control flex-shrink-0">
+                        <div class="label py-0 pb-1"><span class="label-text text-xs opacity-50">Type</span></div>
+                        {{ type_select("col") }}
+                      </div>
+                      <button type="button" class="btn btn-ghost btn-xs text-error"
+                              @click="remLtCol(lt, col.id)" :disabled="lt.columns.length <= 1">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </template>
+                </div>
+                <button type="button" class="btn btn-ghost btn-xs gap-1 opacity-60 hover:opacity-100"
+                        @click="addLtCol(lt)">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                  </svg>
+                  Add column
+                </button>
+              </div>
+            </template>
+            <p x-show="logtables.length === 0" class="text-xs text-base-content/30 italic py-1">No logtables — optional.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation -->
+      <div class="flex justify-between">
+        <button class="btn btn-ghost btn-sm" @click="step = 2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+          Back
+        </button>
+        <div class="flex flex-col items-end gap-1">
+          <button class="btn btn-primary btn-sm" :disabled="!canStep4() || generating" @click="generatePreview()">
+            <span x-show="!generating">Preview &amp; Save</span>
+            <span x-show="generating" class="loading loading-spinner loading-xs"></span>
+            <svg x-show="!generating" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+          </button>
+          <p x-show="gen_error" class="text-xs text-error" x-text="gen_error"></p>
+          <p x-show="!canStep4() && table_name.trim() === ''" class="text-xs text-base-content/40">Enter a table name to continue</p>
+          <p x-show="!canStep4() && table_name.trim() !== '' && !keyfields.some(k => k.name.trim())"
+             class="text-xs text-base-content/40">Add at least one keyfield</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       STEP 4 — Preview & Save
+       ════════════════════════════════════════════════════════ -->
+  <div x-show="step === 4" x-cloak>
+    <div class="space-y-4">
+
+      <!-- config.yml -->
+      <div class="card bg-base-200 shadow">
+        <div class="card-body py-4">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="card-title text-sm font-mono">config.yml</h2>
+            <button class="btn btn-outline btn-sm gap-2" @click="download(config_yaml, 'config.yml')">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              Download
+            </button>
+          </div>
+          <pre class="bg-base-300 rounded-lg p-4 text-xs font-mono overflow-x-auto overflow-y-auto max-h-72 leading-relaxed"
+               x-text="config_yaml"></pre>
+        </div>
+      </div>
+
+      <!-- db_config.yml (MySQL only) -->
+      <div class="card bg-base-200 shadow" x-show="db_config_yaml">
+        <div class="card-body py-4">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="card-title text-sm font-mono">db_config.yml</h2>
+            <button class="btn btn-outline btn-sm gap-2" @click="download(db_config_yaml, 'db_config.yml')">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              Download
+            </button>
+          </div>
+          <pre class="bg-base-300 rounded-lg p-4 text-xs font-mono overflow-x-auto overflow-y-auto max-h-72 leading-relaxed"
+               x-text="db_config_yaml"></pre>
+          <div class="alert alert-warning text-xs py-2 mt-2">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            </svg>
+            <span>Keep <code class="font-mono">db_config.yml</code> private — it contains your database credentials.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Save & Activate -->
+      <div class="card bg-base-200 shadow border border-primary/20">
+        <div class="card-body py-4">
+          <h2 class="card-title text-sm mb-1">Save &amp; activate</h2>
+          <p class="text-xs text-base-content/50 mb-3">
+            Writes the config files to
+            <code class="font-mono">~/.py_experimenter_dashboard/workspaces/<span x-text="table_name"></span>/</code>,
+            registers the project, and connects the dashboard to it immediately.
+          </p>
+          <div class="flex items-center gap-3">
+            <button class="btn btn-success btn-sm gap-2" @click="saveProject()" :disabled="saving">
+              <span x-show="!saving" x-text="project_id ? 'Update &amp; Activate' : 'Save &amp; Activate'"></span>
+              <span x-show="saving" class="loading loading-spinner loading-xs"></span>
+              <svg x-show="!saving" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M5 13l4 4L19 7"/>
+              </svg>
+            </button>
+            <p x-show="save_error" class="text-xs text-error" x-text="save_error"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation -->
+      <div class="flex items-center justify-between">
+        <button class="btn btn-ghost btn-sm" @click="step = 3">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+          Back to editor
+        </button>
+        <a href="/projects" class="btn btn-ghost btn-sm">Cancel</a>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function configEditorData(editData) {
+  const base = {
+    step: 1,
+    provider: 'sqlite',
+    sqlite_path: 'experiments.db',
+    db_host: 'localhost',
+    db_port: 3306,
+    db_user: '',
+    db_password: '',
+    db_database: '',
+    table_name: '',
+    keyfields:   [{id:0, name:'', type:'VARCHAR(255)', values:''}],
+    resultfields:[{id:0, name:'', type:'FLOAT'}],
+    logtables:   [],
+    _nid: 1,
+    project_id: null,
+    config_yaml: '',
+    db_config_yaml: '',
+    generating: false,
+    gen_error: '',
+    saving: false,
+    save_error: '',
+
+    // ── Type helpers ──────────────────────────────────────────────────
+    typeBase(t)  { return (t || 'TEXT').replace(/\(.*\)$/, '').trim().toUpperCase(); },
+    typeArgs(t)  { const m = (t || '').match(/\(([^)]*)\)/); return m ? m[1] : ''; },
+    typeHasLen(t)  { return ['VARCHAR','CHAR'].includes(this.typeBase(t)); },
+    typeHasPrec(t) { return ['DECIMAL','NUMERIC'].includes(this.typeBase(t)); },
+    typePrec(t)  { const a = this.typeArgs(t).split(','); return (a[0] || '10').trim(); },
+    typeScale(t) { const a = this.typeArgs(t).split(','); return (a[1] || '2').trim(); },
+
+    updateTypeBase(item, base) {
+      if (['VARCHAR','CHAR'].includes(base)) {
+        const cur = this.typeArgs(item.type);
+        item.type = base + '(' + (cur || (base === 'CHAR' ? '1' : '255')) + ')';
+      } else if (['DECIMAL','NUMERIC'].includes(base)) {
+        item.type = base + '(' + this.typePrec(item.type) + ',' + this.typeScale(item.type) + ')';
+      } else {
+        item.type = base;
+      }
+    },
+    updateTypeLen(item, v)    { item.type = this.typeBase(item.type) + '(' + (parseInt(v)||1) + ')'; },
+    updateTypePrec(item, p, s){ item.type = this.typeBase(item.type) + '(' + (parseInt(p)||10) + ',' + (parseInt(s)||0) + ')'; },
+
+    // ── Validation ────────────────────────────────────────────────────
+    canStep3() {
+      if (this.provider === 'sqlite') return this.sqlite_path.trim() !== '';
+      return !!(this.db_host.trim() && this.db_database.trim() && this.db_user.trim());
+    },
+    canStep4() {
+      return this.table_name.trim() !== '' && this.keyfields.some(k => k.name.trim() !== '');
+    },
+
+    // ── Field management ─────────────────────────────────────────────
+    addKeyfield()   { this.keyfields.push({id:this._nid++, name:'', type:'VARCHAR(255)', values:''}); },
+    remKeyfield(id) { this.keyfields = this.keyfields.filter(k => k.id !== id); },
+    addResultfield()   { this.resultfields.push({id:this._nid++, name:'', type:'FLOAT'}); },
+    remResultfield(id) { this.resultfields = this.resultfields.filter(r => r.id !== id); },
+    addLogtable()   { this.logtables.push({id:this._nid++, name:'', columns:[{id:this._nid++, name:'', type:'INT'}]}); },
+    remLogtable(id) { this.logtables = this.logtables.filter(l => l.id !== id); },
+    addLtCol(lt)        { lt.columns.push({id:this._nid++, name:'', type:'INT'}); },
+    remLtCol(lt, colId) { lt.columns = lt.columns.filter(c => c.id !== colId); },
+
+    _payload() {
+      return {
+        project_id:   this.project_id,
+        provider:     this.provider,
+        sqlite_path:  this.sqlite_path,
+        db_host:      this.db_host,
+        db_port:      this.db_port,
+        db_user:      this.db_user,
+        db_password:  this.db_password,
+        db_database:  this.db_database,
+        table_name:   this.table_name,
+        keyfields:    this.keyfields.filter(k => k.name.trim()),
+        resultfields: this.resultfields.filter(r => r.name.trim()),
+        logtables:    this.logtables.filter(l => l.name.trim()),
+      };
+    },
+
+    async generatePreview() {
+      this.generating = true;
+      this.gen_error = '';
+      try {
+        const resp = await fetch('/projects/generate-config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(this._payload()),
+        });
+        const data = await resp.json();
+        if (data.error) { this.gen_error = data.error; }
+        else {
+          this.config_yaml    = data.config_yaml;
+          this.db_config_yaml = data.db_config_yaml || '';
+          this.step = 4;
+        }
+      } catch(e) { this.gen_error = String(e); }
+      finally    { this.generating = false; }
+    },
+
+    async saveProject() {
+      this.saving = true;
+      this.save_error = '';
+      try {
+        const resp = await fetch('/projects/save-config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(this._payload()),
+        });
+        const data = await resp.json();
+        if (data.error) { this.save_error = data.error; }
+        else { window.location.href = '/'; }
+      } catch(e) { this.save_error = String(e); }
+      finally    { this.saving = false; }
+    },
+
+    download(text, filename) {
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(new Blob([text], {type:'text/yaml'})),
+        download: filename,
+      });
+      a.click();
+      URL.revokeObjectURL(a.href);
+    },
+  };
+
+  if (!editData) return base;
+
+  // Merge edit data; bump _nid above any existing ids to avoid collisions
+  const merged = {...base, ...editData};
+  const allIds = [
+    ...merged.keyfields.map(k => k.id),
+    ...merged.resultfields.map(r => r.id),
+    ...merged.logtables.flatMap(l => [l.id, ...l.columns.map(c => c.id)]),
+    0,
+  ];
+  merged._nid = Math.max(...allIds) + 1;
+  return merged;
+}
+</script>
+{% endblock %}

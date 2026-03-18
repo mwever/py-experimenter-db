@@ -19,7 +19,7 @@ async def query_page(request: Request) -> HTMLResponse:
     templates = get_templates(request)
     history = await state.history_store.get_history(50)
     saved = await state.history_store.get_saved_queries()
-    db_schema = await get_db_schema(state.pool, state.schema)
+    db_schema = await get_db_schema(state.db, state.schema)
     hints_tables = {tbl.table_name: [col.name for col in tbl.columns] for tbl in db_schema}
     return templates.TemplateResponse(
         request=request,
@@ -40,7 +40,7 @@ async def execute(request: Request, sql: str = Form(...)) -> HTMLResponse:
     templates = get_templates(request)
 
     t0 = time.monotonic()
-    result = await execute_query(state.pool, sql)
+    result = await execute_query(state.db, sql)
     duration_ms = int((time.monotonic() - t0) * 1000)
 
     # Store in history

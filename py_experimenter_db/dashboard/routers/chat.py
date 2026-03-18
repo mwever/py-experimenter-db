@@ -328,7 +328,7 @@ async def chat_message(request: Request, body: ChatRequest):
 
     mental_state = await state.history_store.get_mental_state()
     global_memory = await state.project_registry.get_global_memory()
-    db_schema = await get_db_schema(state.pool, state.schema)
+    db_schema = await get_db_schema(state.db, state.schema)
     system_msg = {"role": "system", "content": _build_system_prompt(state.schema, db_schema, mental_state, global_memory)}
     messages = [system_msg] + [{"role": m.role, "content": m.content} for m in body.messages]
 
@@ -393,6 +393,7 @@ async def chat_execute(request: Request, body: ExecuteRequest):
         creds=state.creds,
         schema=state.schema,
         output_dir=_output_dir(state),
+        sqlite_path=state.experimenter_config.sqlite_path if state.experimenter_config else None,
     )
     return {
         "stdout": result.stdout,

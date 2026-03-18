@@ -23,12 +23,51 @@ class RunResult:
     error: str | None = None
 
 
-def _build_preamble(creds: CredentialsConfig, schema: SchemaInfo, output_dir: str) -> str:
+def _build_preamble(
+    creds: CredentialsConfig | None,
+    schema: SchemaInfo,
+    output_dir: str,
+    sqlite_path: str | None = None,
+) -> str:
     """Return Python source injected before the user code."""
     logtable_info = {
         f"{schema.table_name}__{lt}": list(schema.logtable_columns.get(lt, []))
         for lt in schema.logtable_names
     }
+
+    if sqlite_path:
+        db_block = textwrap.dedent(f"""\
+            import sqlite3 as _sqlite3
+            _DB_PATH = {sqlite_path!r}
+
+            def query(sql, **kw):
+                \"\"\"Execute SQL and return a pandas DataFrame.\"\"\"
+                conn = _sqlite3.connect(_DB_PATH)
+                try:
+                    return pd.read_sql_query(sql, conn, **kw)
+                finally:
+                    conn.close()
+        """)
+    else:
+        db_block = textwrap.dedent(f"""\
+            import pymysql
+            _DB = dict(
+                host={creds.server!r},
+                port={creds.port!r},
+                user={creds.user!r},
+                password={creds.password!r},
+                database={creds.database!r},
+            )
+
+            def query(sql, **kw):
+                \"\"\"Execute SQL and return a pandas DataFrame.\"\"\"
+                conn = pymysql.connect(**_DB)
+                try:
+                    return pd.read_sql(sql, conn, **kw)
+                finally:
+                    conn.close()
+        """)
+
     return textwrap.dedent(f"""\
         import os, sys, re, json
         import pandas as pd
@@ -38,23 +77,7 @@ def _build_preamble(creds: CredentialsConfig, schema: SchemaInfo, output_dir: st
         import matplotlib.pyplot as plt
 
         # ── DB connection helpers ───────────────────────────────────────
-        import pymysql
-        _DB = dict(
-            host={creds.server!r},
-            port={creds.port!r},
-            user={creds.user!r},
-            password={creds.password!r},
-            database={creds.database!r},
-        )
-
-        def query(sql, **kw):
-            \"\"\"Execute SQL and return a pandas DataFrame.\"\"\"
-            conn = pymysql.connect(**_DB)
-            try:
-                return pd.read_sql(sql, conn, **kw)
-            finally:
-                conn.close()
-
+        {db_block}
         # ── Schema constants ───────────────────────────────────────────
         TABLE        = {schema.table_name!r}
         KEYFIELDS    = {schema.keyfields!r}
@@ -81,11 +104,12 @@ def _build_preamble(creds: CredentialsConfig, schema: SchemaInfo, output_dir: st
 
 async def run_code(
     code: str,
-    creds: CredentialsConfig,
+    creds: CredentialsConfig | None,
     schema: SchemaInfo,
     output_dir: Path,
+    sqlite_path: str | None = None,
 ) -> RunResult:
-    preamble = _build_preamble(creds, schema, str(output_dir))
+    preamble = _build_preamble(creds, schema, str(output_dir), sqlite_path=sqlite_path)
     full_code = preamble + code
 
     fd, tmpfile = tempfile.mkstemp(suffix=".py", prefix="pyexp_chat_")

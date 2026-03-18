@@ -74,7 +74,11 @@ class ProjectRegistry:
             for stmt in stmts:
                 await db.execute(stmt)
             # Migrate existing DBs that pre-date these columns
-            for col, default in (("config_path", "''"), ("db_config_path", "''")):
+            for col, default in (
+                ("config_path", "''"),
+                ("db_config_path", "''"),
+                ("config_json", "'{}'"),
+            ):
                 try:
                     await db.execute(
                         f"ALTER TABLE projects ADD COLUMN {col} TEXT NOT NULL DEFAULT {default}"

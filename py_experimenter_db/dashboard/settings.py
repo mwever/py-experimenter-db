@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
+
+# Environment variable names for LLM defaults
+_ENV_LLM_URL   = "PY_EXP_LLM_URL"
+_ENV_LLM_TOKEN = "PY_EXP_LLM_TOKEN"
+_ENV_LLM_MODEL = "PY_EXP_LLM_MODEL"
 
 
 @dataclass
@@ -49,12 +55,10 @@ def settings_from_db(raw: dict[str, str]) -> DashboardSettings:
         s.default_sort_col = raw["default_sort_col"]
     if "default_sort_dir" in raw:
         s.default_sort_dir = raw["default_sort_dir"] if raw["default_sort_dir"] in ("ASC", "DESC") else "DESC"
-    if "llm_url" in raw:
-        s.llm_url = raw["llm_url"]
-    if "llm_token" in raw:
-        s.llm_token = raw["llm_token"]
-    if "llm_model" in raw:
-        s.llm_model = raw["llm_model"] or "gpt-4o"
+    # LLM fields: DB value (if non-empty) > env var > hardcoded default
+    s.llm_url   = raw.get("llm_url")   or os.environ.get(_ENV_LLM_URL,   "")
+    s.llm_token = raw.get("llm_token") or os.environ.get(_ENV_LLM_TOKEN, "")
+    s.llm_model = raw.get("llm_model") or os.environ.get(_ENV_LLM_MODEL, "gpt-4o")
     return s
 
 
