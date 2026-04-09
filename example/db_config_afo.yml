@@ -5,3 +5,4 @@ CREDENTIALS:
   Connection:
     Standard:
       server: isys-otfml.cs.upb.de
+      port: 3306

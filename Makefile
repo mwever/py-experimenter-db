@@ -3,13 +3,19 @@ install: ## Install the virtual environment and install the pre-commit hooks
 	@echo "🚀 Creating virtual environment using uv"
 	@uv sync
 	@uv run pre-commit install
+	@$(MAKE) fetch-assets
+
+.PHONY: fetch-assets
+fetch-assets: ## Download vendor CSS/JS assets (DaisyUI, Tailwind, HTMX, Alpine, CodeMirror, Plotly)
+	@echo "🚀 Fetching vendor CSS/JS assets"
+	@uv run python scripts/download_assets.py
 
 .PHONY: dev
 dev: ## Run the dashboard in dev mode with auto-reload (uses example/ config)
 	@echo "🚀 Starting PyExperimenter Dashboard (dev mode, http://127.0.0.1:8080)"
 	@uv run py-experimenter-dashboard \
-		--config example/config.yml \
-		--db-config example/db_config.yml \
+		--config example/config_afo.yml \
+		--db-config example/db_config_afo.yml \
 		--host 127.0.0.1 \
 		--port 8080 \
 		--reload

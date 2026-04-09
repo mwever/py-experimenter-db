@@ -58,9 +58,15 @@ dev = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["py_experimenter_db"]
-include = ["py_experimenter_db/dashboard/templates/**"]
+include = [
+    "py_experimenter_db/dashboard/templates/**",
+    "py_experimenter_db/dashboard/static/**",
+]
 
 [tool.mypy]
 files = ["py_experimenter_db"]
@@ -132,4 +138,3 @@ skip_empty = true
 [tool.coverage.run]
 branch = true
 source = ["py_experimenter_db"]
-

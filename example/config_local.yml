@@ -1,0 +1,66 @@
+PY_EXPERIMENTER:
+  n_jobs: 1
+
+  Database:
+    provider: mysql
+    database: deepcv2
+    table:
+      name: deepcv
+      keyfields:
+        dataset_id:
+          type: INT
+          values: [3, 6, 11, 12, 14, 15, 16, 18, 22, 23, 28, 29, 32, 37, 38, 44, 46, 54, 151, 182]
+        learner:
+          type: VARCHAR(50)
+          values: ['random_forest', 'logistic_regression']
+        test_split_seed:
+          type: INT
+          values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        outer_split_seed:
+          type: INT
+          values: [0, 1, 2, 3, 4]
+        inner_split_seed:
+          type: INT
+          values: [0, 1, 2, 3, 4]
+        feature_permutation_seed:
+          type: INT
+          values: [0, 1]
+      result_timestamps: true
+      resultfields:
+        n_features_total: INT
+        n_values_total: INT
+        n_values_completed: INT
+    logtables:
+      performance_results:
+        dataset_id: INT
+        n_index: INT
+        n_features: INT
+        feature_mask: TEXT
+        inner_inner_accuracy: FLOAT
+        inner_inner_aucroc: FLOAT
+        inner_inner_f1: FLOAT
+        inner_inner_logloss: FLOAT
+        inner_outer_accuracy: FLOAT
+        inner_outer_aucroc: FLOAT
+        inner_outer_f1: FLOAT
+        inner_outer_logloss: FLOAT
+        inner_test_accuracy: FLOAT
+        inner_test_aucroc: FLOAT
+        inner_test_f1: FLOAT
+        inner_test_logloss: FLOAT
+        outer_outer_accuracy: FLOAT
+        outer_outer_aucroc: FLOAT
+        outer_outer_f1: FLOAT
+        outer_outer_logloss: FLOAT
+        outer_test_accuracy: FLOAT
+        outer_test_aucroc: FLOAT
+        outer_test_f1: FLOAT
+        outer_test_logloss: FLOAT
+        test_test_accuracy: FLOAT
+        test_test_aucroc: FLOAT
+        test_test_f1: FLOAT
+        test_test_logloss: FLOAT
+  CUSTOM:
+    test_split_frac: 0.2
+    config_path: config.yml
+    db_config_path: db_config.yml

@@ -4,10 +4,10 @@
 
 {% block extra_head %}
 <!-- CodeMirror 5 -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/theme/dracula.css">
-<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/python/python.min.js"></script>
+<link rel="stylesheet" href="/static/vendor/codemirror/codemirror.min.css">
+<link rel="stylesheet" href="/static/vendor/codemirror/dracula.css">
+<script src="/static/vendor/codemirror/codemirror.min.js"></script>
+<script src="/static/vendor/codemirror/python.min.js"></script>
 <style>
   /* plain textarea used in modals (memory) */
   .code-ta {
@@ -70,6 +70,13 @@
   .out-hdr:hover { opacity: 0.75; }
   .out-chevron { transition: transform 0.15s; }
   .out-chevron.collapsed { transform: rotate(-90deg); }
+
+  .resize-handle {
+    width: 6px; cursor: col-resize; background: transparent;
+    flex-shrink: 0; transition: background 0.15s; border-radius: 3px;
+  }
+  .resize-handle:hover, .resize-handle.active { background: oklch(var(--p)/.4); }
+  body.col-resizing * { cursor: col-resize !important; user-select: none !important; }
 </style>
 {% endblock %}
 
@@ -117,6 +124,18 @@
     </div>
 
     <div class="flex items-center gap-2 flex-shrink-0">
+      <!-- View mode toggle -->
+      <div class="join">
+        <button class="btn btn-xs join-item" title="Split view"
+                :class="viewMode === 'split' ? 'btn-primary' : 'btn-ghost'"
+                @click="viewMode = 'split'">Split</button>
+        <button class="btn btn-xs join-item" title="Chat only"
+                :class="viewMode === 'chat' ? 'btn-primary' : 'btn-ghost'"
+                @click="viewMode = 'chat'">Chat</button>
+        <button class="btn btn-xs join-item" title="Code only"
+                :class="viewMode === 'code' ? 'btn-primary' : 'btn-ghost'"
+                @click="viewMode = 'code'">Code</button>
+      </div>
       <button class="btn btn-ghost btn-sm gap-1" @click="openMemoryModal()" title="View/edit assistant memory">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -141,10 +160,13 @@
   </div>
 
   <!-- ── Main two-panel layout ──────────────────────────────────────────── -->
-  <div class="flex gap-3 flex-1 min-h-0">
+  <div class="flex flex-col flex-1 min-h-0">
+
+    <div class="flex flex-1 min-h-0" x-ref="mainLayout">
 
     <!-- ── LEFT: Chat ───────────────────────────────────────────────────── -->
-    <div class="flex flex-col flex-1 min-h-0 min-w-0">
+    <div class="flex flex-col min-h-0 min-w-0 flex-1"
+         x-show="viewMode === 'split' || viewMode === 'chat'">
 
       <!-- No session placeholder (always in DOM, shown/hidden) -->
       <div x-show="currentSessionId === 0"
@@ -224,21 +246,37 @@
       </div>
     </div>
 
+    <!-- Drag handle (split mode only) -->
+    <div x-show="viewMode === 'split'"
+         class="resize-handle"
+         :class="{'active': resizing}"
+         @mousedown.prevent="startResize($event)"></div>
+
     <!-- ── RIGHT: Scripts ▸ Code editor ▸ Output ─────────────────────── -->
-    <div class="flex flex-col w-[42%] flex-shrink-0 min-h-0 gap-3">
+    <div class="flex flex-col min-h-0 gap-3"
+         :class="viewMode === 'split' ? 'flex-shrink-0' : 'flex-1 min-w-0'"
+         :style="viewMode === 'split' ? 'width:' + rightWidth + 'px' : ''"
+         x-show="viewMode === 'split' || viewMode === 'code'">
 
       <!-- Script list -->
       <div class="card bg-base-200 shadow flex-shrink-0">
         <div class="card-body p-3">
           <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-semibold text-base-content/60 uppercase tracking-wide">Scripts</span>
+            <button class="flex items-center gap-1.5 text-xs font-semibold text-base-content/60 uppercase tracking-wide hover:text-base-content transition-colors"
+                    @click="scriptsOpen = !scriptsOpen">
+              <svg class="w-3 h-3 transition-transform duration-150" :class="scriptsOpen ? '' : '-rotate-90'"
+                   fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+              Scripts
+            </button>
             <button class="btn btn-ghost btn-xs btn-square" title="New script" @click="newScript()">
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
               </svg>
             </button>
           </div>
-          <div class="max-h-36 overflow-y-auto space-y-1">
+          <div class="max-h-36 overflow-y-auto space-y-1" x-show="scriptsOpen">
             <p x-show="scripts.length === 0"
                class="text-xs text-base-content/30 text-center py-2">No scripts yet</p>
             <template x-for="sc in scripts" :key="sc.id">
@@ -390,6 +428,7 @@
       </div>
 
     </div><!-- /right panel -->
+    </div><!-- /panels row -->
   </div><!-- /main layout -->
 
   <!-- ── Memory modal ───────────────────────────────────────────────────── -->
@@ -490,6 +529,10 @@ function escHtml(s) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function escAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
 function formatMessage(text) {
   const re = /```(?:\w*)\n([\s\S]*?)```/g;
   const parts = [];
@@ -503,10 +546,10 @@ function formatMessage(text) {
 
   return parts.map(p => {
     if (p.t === 'code') {
-      const enc = encodeURIComponent(p.v);
       return `<pre>${escHtml(p.v)}</pre>` +
         `<div class="flex justify-end -mt-1 mb-1">` +
-        `<button onclick="document.dispatchEvent(new CustomEvent('set-code',{detail:{code:decodeURIComponent('${enc}')}}))"` +
+        `<button data-code="${escAttr(p.v)}"` +
+        ` onclick="window.dispatchEvent(new CustomEvent('set-code',{detail:{code:this.dataset.code}}))"` +
         ` class="btn btn-xs btn-ghost">Use in editor ↗</button></div>`;
     }
     let html = escHtml(p.v.trim());
@@ -563,6 +606,12 @@ function chatApp() {
     versionModalScriptName: '',
     versions: [],
 
+    // Layout
+    viewMode: 'split',   // 'split' | 'chat' | 'code'
+    scriptsOpen: true,
+    resizing: false,
+    rightWidth: 420,
+
     async init() {
       this._cm = null;  // non-reactive, holds the CodeMirror instance
 
@@ -588,7 +637,11 @@ function chatApp() {
         console.warn('session init failed', e);
       }
 
-      this.$nextTick(() => this._initEditor());
+      this.$nextTick(() => {
+        const ml = this.$refs.mainLayout;
+        if (ml) this.rightWidth = Math.round(ml.offsetWidth * 0.42);
+        this._initEditor();
+      });
     },
 
     _initEditor() {
@@ -827,6 +880,27 @@ function chatApp() {
       this.currentScriptId = null;
       this.currentScriptName = '';
       this.execOutput = null;
+    },
+
+    startResize(e) {
+      const startX = e.clientX;
+      const startWidth = this.rightWidth;
+      const container = this.$refs.mainLayout;
+      this.resizing = true;
+      document.body.classList.add('col-resizing');
+      const onMove = (e) => {
+        const minW = 280;
+        const maxRight = container.offsetWidth - minW;
+        this.rightWidth = Math.max(minW, Math.min(maxRight, startWidth + (startX - e.clientX)));
+      };
+      const onUp = () => {
+        this.resizing = false;
+        document.body.classList.remove('col-resizing');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
     },
 
     // ── Scripts ─────────────────────────────────────────────────────────

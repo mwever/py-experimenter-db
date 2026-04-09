@@ -1,0 +1,47 @@
+PY_EXPERIMENTER:
+  n_jobs: 1
+
+  Database:
+    provider: mysql
+    database: 26_automl_af_opt
+    table:
+      name: results #_ucb_8
+      keyfields:
+        "bbob_dim":
+          type: INT
+          #values: [ 2, 4, 8, 16, 32 ]
+        "bbob_fid":
+          type: INT
+          #values: [1] #,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
+        "bbob_instance":
+          type: INT
+          #values: [0] #,1,2]
+        "acq_func":
+          type: VARCHAR(50)
+        "acq_func_optim":
+          type: VARCHAR(50)
+        "kernel":
+          type: VARCHAR(50)
+        "seed":
+          type: INT
+
+
+    logtables:
+      history_log:
+        X: TEXT
+        Y: TEXT
+        Y_incumbent: TEXT
+        regret: TEXT
+        regret_incumbent: TEXT
+      param_log:
+        iter: TEXT
+        theta: TEXT
+      af_optim_log:
+        fb: TEXT
+        restart_mcmc: TEXT
+      diagnostic:
+        iter: INT
+        reason:  TEXT
+      mismatch_log:
+        iter: INT
+        metrics: TEXT

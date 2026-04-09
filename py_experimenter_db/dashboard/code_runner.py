@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import re
 import sys
@@ -19,7 +20,7 @@ from py_experimenter_db.db.schema import SchemaInfo
 class RunResult:
     stdout: str
     stderr: str
-    plots: list[str] = field(default_factory=list)   # relative filenames inside output_dir
+    plots: list[str] = field(default_factory=list)  # relative filenames inside output_dir
     error: str | None = None
 
 
@@ -31,8 +32,7 @@ def _build_preamble(
 ) -> str:
     """Return Python source injected before the user code."""
     logtable_info = {
-        f"{schema.table_name}__{lt}": list(schema.logtable_columns.get(lt, []))
-        for lt in schema.logtable_names
+        f"{schema.table_name}__{lt}": list(schema.logtable_columns.get(lt, [])) for lt in schema.logtable_names
     }
 
     if sqlite_path:
@@ -68,7 +68,7 @@ def _build_preamble(
                     conn.close()
         """)
 
-    return textwrap.dedent(f"""\
+    header = textwrap.dedent("""\
         import os, sys, re, json
         import pandas as pd
         import numpy as np
@@ -77,7 +77,9 @@ def _build_preamble(
         import matplotlib.pyplot as plt
 
         # ── DB connection helpers ───────────────────────────────────────
-        {db_block}
+        """)
+
+    footer = textwrap.dedent(f"""\
         # ── Schema constants ───────────────────────────────────────────
         TABLE        = {schema.table_name!r}
         KEYFIELDS    = {schema.keyfields!r}
@@ -99,7 +101,9 @@ def _build_preamble(
         plt.show = _save_show
 
         # ── User code ───────────────────────────────────────────────────
-    """)
+        """)
+
+    return header + db_block + "\n" + footer
 
 
 async def run_code(
@@ -137,18 +141,12 @@ async def run_code(
         stdout_clean = re.sub(r"\[PLOT\].+\n?", "", stdout).strip()
 
         # Return only filenames (relative), not full paths
-        plots = [
-            os.path.basename(p.strip())
-            for p in plot_paths
-            if os.path.exists(p.strip())
-        ]
+        plots = [os.path.basename(p.strip()) for p in plot_paths if os.path.exists(p.strip())]
 
         return RunResult(stdout=stdout_clean, stderr=stderr.strip(), plots=plots)
 
     except Exception as exc:
         return RunResult(stdout="", stderr="", error=str(exc))
     finally:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmpfile)
-        except OSError:
-            pass

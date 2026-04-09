@@ -211,3 +211,6 @@ marimo/_lsp/
 __marimo__/
 
 .py_experimenter_dashboard
+
+# Vendor CSS/JS assets – downloaded at build time, not stored in source control
+py_experimenter_db/dashboard/static/vendor/
